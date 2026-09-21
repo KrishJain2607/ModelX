@@ -13,7 +13,7 @@ ModelX uses the official Kite Connect Python client behind a read-only applicati
 6. ModelX keeps the resulting access token in runtime memory only. It is not shown in the UI, committed to Git, or stored in the database.
 7. Use **Check connection** or the profile endpoint to verify authentication.
 
-Kite documents that the API secret and access token must not be exposed publicly. The request token is short-lived and single-use, while the access token normally expires at the next-day 6 AM boundary. citeturn1search0
+Kite documents that the API secret and access token must not be exposed publicly. The request token is short-lived and single-use, while the access token normally expires at the next-day 6 AM boundary.
 
 Because the Render free service can restart or spin down, the runtime access token can disappear. If that happens, simply log in with Kite again from the ModelX website. Render documents that free services spin down after 15 minutes of inactivity and that their local filesystem is ephemeral. citeturn0search1
 
