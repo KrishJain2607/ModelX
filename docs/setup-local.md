@@ -3,7 +3,6 @@
 ## Prerequisites
 
 - Python 3.11+
-- PostgreSQL 15+
 - A Kite Connect developer application
 
 ## Backend
@@ -17,12 +16,13 @@ pip install -r requirements.txt
 
 Create `.env` in the repository root from `.env.example`. Do not commit it.
 
-At minimum configure:
+Configure:
 
-- `DATABASE_URL`
 - `BROKER_API_KEY`
 - `BROKER_API_SECRET`
 - keep `LIVE_TRADING_ENABLED=false`
+
+No PostgreSQL is required for the V0 POC. Market data is fetched from Kite and processed in memory.
 
 Start the API from the repository root:
 
@@ -38,9 +38,9 @@ GET http://127.0.0.1:8000/health
 
 Then use the broker login endpoint and follow the authentication flow documented in `docs/kite-integration.md`.
 
-## Database initialization
+## POC analysis
 
-The current foundation defines SQLAlchemy models but intentionally does not auto-create production tables on application startup. The next database step is an Alembic migration setup so schema changes are versioned and reproducible.
+After Kite authentication, use `/api/market/candles/{instrument_token}` to inspect raw candles and `/api/analysis/{instrument_token}` to calculate the current deterministic technical score.
 
 ## Safety
 
