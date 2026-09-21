@@ -6,5 +6,6 @@ sqlalchemy>=2.0,<3.0
 psycopg[binary]>=3.2,<4.0
 pandas>=2.2,<3.0
 numpy>=2.0,<3.0
+kiteconnect>=5.0,<6.0
 pytest>=8.3,<9.0
 httpx>=0.28,<1.0
