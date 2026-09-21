@@ -4,7 +4,6 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     app_env: str = "development"
     live_trading_enabled: bool = False
-    database_url: str = "postgresql+psycopg://modelx:modelx@localhost:5432/modelx"
     broker_api_key: str = ""
     broker_api_secret: str = ""
     broker_access_token: str = ""
