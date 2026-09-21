@@ -1,4 +1,7 @@
+from urllib.parse import quote
+
 from fastapi import APIRouter, HTTPException, Query
+from fastapi.responses import RedirectResponse
 
 from app.broker import KiteConfig, KiteReadOnlyClient
 from app.config.settings import settings
@@ -21,6 +24,24 @@ def login_url() -> dict[str, str]:
     if not settings.broker_api_key:
         raise HTTPException(status_code=503, detail="Broker API key is not configured")
     return {"login_url": _client().login_url()}
+
+
+@router.get("/callback", include_in_schema=False)
+def callback(
+    request_token: str | None = Query(None),
+    status: str | None = Query(None),
+) -> RedirectResponse:
+    if status != "success" or not request_token:
+        return RedirectResponse("/?auth=error&message=" + quote("Kite login was not completed"))
+    if not settings.broker_api_key or not settings.broker_api_secret:
+        return RedirectResponse("/?auth=error&message=" + quote("Broker credentials are not configured"))
+    try:
+        data = _client().generate_session(request_token)
+        settings.broker_access_token = data["access_token"]
+        user_id = quote(str(data["user_id"]))
+        return RedirectResponse("/?auth=success&user_id=" + user_id)
+    except Exception:
+        return RedirectResponse("/?auth=error&message=" + quote("Kite authentication failed"))
 
 
 @router.post("/session")
