@@ -16,5 +16,3 @@ services:
         sync: false
       - key: BROKER_API_SECRET
         sync: false
-      - key: BROKER_ACCESS_TOKEN
-        sync: false
