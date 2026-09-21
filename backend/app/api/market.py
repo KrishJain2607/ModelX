@@ -59,7 +59,7 @@ def instruments(exchange: str = Query("NSE")) -> dict[str, object]:
 
 @router.get("/search")
 def search(
-    q: str = Query(..., min_length=1, max_length=40),
+    q: str = Query(..., min_length=1, max_length=50),
     exchange: str = Query("NSE"),
 ) -> dict[str, object]:
     _require_auth()
@@ -74,12 +74,18 @@ def search(
                 _normalise(r) for r in rows
                 if r.get("segment") == exchange and r.get("instrument_type") == "EQ"
             ]
-            exact = [item for item in equity if item["tradingsymbol"].upper() == query]
-            starts = [item for item in equity if item not in exact and item["tradingsymbol"].upper().startswith(query)]
+            exact = [item for item in equity if (item["tradingsymbol"] or "").upper() == query]
+            starts = [
+                item for item in equity
+                if item not in exact and (item["tradingsymbol"] or "").upper().startswith(query)
+            ]
             contains = [
                 item for item in equity
-                if item not in exact and query in item["tradingsymbol"].upper()
-                or item not in exact and query in item["name"].upper()
+                if item not in exact
+                and (
+                    query in (item["tradingsymbol"] or "").upper()
+                    or query in (item["name"] or "").upper()
+                )
             ]
             results = (exact + starts + contains)[:20]
     except Exception as exc:
