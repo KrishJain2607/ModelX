@@ -34,8 +34,8 @@ def calculate_indicators(candles: list[dict]) -> pd.DataFrame:
     losses = -delta.clip(upper=0)
     avg_gain = gains.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
     avg_loss = losses.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
-    rs = avg_gain / avg_loss.replace(0, pd.NA)
-    frame["rsi14"] = 100 - (100 / (1 + rs))
+    frame["rsi14"] = 100 - (100 / (1 + avg_gain / avg_loss.replace(0, float("nan"))))
+    frame.loc[(avg_loss == 0) & (avg_gain > 0), "rsi14"] = 100.0
 
     ema12 = close.ewm(span=12, adjust=False).mean()
     ema26 = close.ewm(span=26, adjust=False).mean()
@@ -45,25 +45,20 @@ def calculate_indicators(candles: list[dict]) -> pd.DataFrame:
 
     previous_close = close.shift(1)
     true_range = pd.concat(
-        [
-            high - low,
-            (high - previous_close).abs(),
-            (low - previous_close).abs(),
-        ],
+        [high - low, (high - previous_close).abs(), (low - previous_close).abs()],
         axis=1,
     ).max(axis=1)
     frame["atr14"] = true_range.ewm(alpha=1 / 14, adjust=False, min_periods=14).mean()
 
     frame["volume_sma20"] = volume.rolling(20, min_periods=1).mean()
-    frame["volume_ratio20"] = volume / frame["volume_sma20"].replace(0, pd.NA)
+    frame["volume_ratio20"] = volume / frame["volume_sma20"].replace(0, float("nan"))
 
     typical_price = (high + low + close) / 3
     cumulative_volume = volume.cumsum()
-    frame["vwap"] = (typical_price * volume).cumsum() / cumulative_volume.replace(0, pd.NA)
+    frame["vwap"] = (typical_price * volume).cumsum() / cumulative_volume.replace(0, float("nan"))
 
     frame["rolling_high20"] = high.shift(1).rolling(20, min_periods=20).max()
     frame["rolling_low20"] = low.shift(1).rolling(20, min_periods=20).min()
-
     return frame
 
 
@@ -121,7 +116,6 @@ def score_latest(frame: pd.DataFrame) -> dict[str, object]:
 
     score = max(0, min(100, int(round(score))))
     signal = "BUY_CANDIDATE" if score >= 70 else "WATCH" if score >= 55 else "NO_SIGNAL"
-
     return {
         "score": score,
         "signal": signal,
