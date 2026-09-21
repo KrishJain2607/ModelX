@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: modelx-poc
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LIVE_TRADING_ENABLED
+        value: "false"
+      - key: BROKER_API_KEY
+        sync: false
+      - key: BROKER_API_SECRET
+        sync: false
+      - key: BROKER_ACCESS_TOKEN
+        sync: false
