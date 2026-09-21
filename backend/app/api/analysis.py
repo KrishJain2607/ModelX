@@ -62,11 +62,12 @@ def _risk_plan(
     available_capital: float,
     current_exposure: float = 0.0,
     open_positions: int = 0,
+    daily_realized_loss: float = 0.0,
 ) -> dict[str, object]:
     if any(value <= 0 for value in (entry_price, stop_loss, target_price, available_capital)):
         raise ValueError("Prices and available capital must be positive")
-    if current_exposure < 0:
-        raise ValueError("current_exposure cannot be negative")
+    if current_exposure < 0 or daily_realized_loss < 0:
+        raise ValueError("current_exposure and daily_realized_loss cannot be negative")
     if stop_loss >= entry_price:
         raise ValueError("For a long trade, stop_loss must be below entry_price")
     if target_price <= entry_price:
@@ -75,6 +76,7 @@ def _risk_plan(
     risk_per_share = entry_price - stop_loss
     reward_per_share = target_price - entry_price
     risk_reward = reward_per_share / risk_per_share
+    daily_loss_limit = available_capital * settings.max_daily_loss
     risk_budget = available_capital * settings.max_risk_per_trade
     exposure_limit = available_capital * settings.max_total_exposure
     remaining_exposure = max(0.0, exposure_limit - current_exposure)
@@ -85,6 +87,8 @@ def _risk_plan(
     capital_at_risk = position_size * risk_per_share
 
     warnings: list[str] = []
+    if daily_realized_loss >= daily_loss_limit:
+        warnings.append(f"Daily loss limit ({daily_loss_limit:.2f}) has been reached")
     if risk_reward < settings.min_risk_reward:
         warnings.append(
             f"Risk/reward {risk_reward:.2f} is below minimum {settings.min_risk_reward:.2f}"
@@ -105,6 +109,8 @@ def _risk_plan(
         "position_size": position_size,
         "notional_value": notional,
         "portfolio_risk_budget": risk_budget,
+        "daily_loss_limit": daily_loss_limit,
+        "daily_realized_loss": daily_realized_loss,
         "max_exposure_value": exposure_limit,
         "remaining_exposure": remaining_exposure,
         "open_positions": open_positions,
@@ -113,6 +119,7 @@ def _risk_plan(
             position_size > 0
             and risk_reward >= settings.min_risk_reward
             and open_positions < settings.max_open_positions
+            and daily_realized_loss < daily_loss_limit
         ),
         "execution_enabled": False,
     }
@@ -207,6 +214,7 @@ def risk_plan(
     available_capital: float = Query(..., gt=0),
     current_exposure: float = Query(0.0, ge=0),
     open_positions: int = Query(0, ge=0),
+    daily_realized_loss: float = Query(0.0, ge=0),
 ) -> dict[str, object]:
     try:
         return _risk_plan(
@@ -216,6 +224,7 @@ def risk_plan(
             available_capital,
             current_exposure,
             open_positions,
+            daily_realized_loss,
         )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
