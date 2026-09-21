@@ -4,11 +4,22 @@ Personal research and execution platform for Indian equity trading.
 
 ## Current stage
 
-**V0 POC / development only.** ModelX connects to Kite for read-only market data and calculates deterministic technical signals in memory. No database and no live trading are used in this iteration.
+**V0 POC / development only.** ModelX is hosted as a read-only web application, connects to Kite for market data, and calculates deterministic technical signals in memory. No database and no live trading are used in this iteration.
+
+## Hosted POC
+
+The application is designed for a Render free web service.
+
+- Web UI at `/`
+- FastAPI documentation at `/docs`
+- Health check at `/health`
+- Kite login at `/api/broker/login-url`
+- Hosted Kite callback at `/api/broker/callback`
+- Analysis endpoint at `/api/analysis/{instrument_token}`
 
 ## POC pipeline
 
-Kite authentication -> market data -> indicators -> deterministic strategy score -> analysis API.
+Kite authentication -> market data -> indicators -> deterministic strategy score -> research result.
 
 ## Design principles
 
@@ -22,7 +33,8 @@ Kite authentication -> market data -> indicators -> deterministic strategy score
 ## Next iterations
 
 1. Backtest and validate the deterministic signal engine.
-2. Add a minimal dashboard and paper-trading workflow.
-3. Add persistent PostgreSQL storage once the POC demonstrates the core loop.
-4. Add AI analysis and notifications.
-5. Only after testing and broker/compliance enablement, build live execution.
+2. Expand the dashboard and stock scanner with rate-limit-aware data access.
+3. Add paper trading.
+4. Add persistent PostgreSQL storage once the POC demonstrates the core loop.
+5. Add AI analysis and notifications.
+6. Only after testing and broker/compliance enablement, build live execution.
