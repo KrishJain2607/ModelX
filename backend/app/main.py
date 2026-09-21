@@ -25,5 +25,7 @@ def health() -> dict[str, object]:
         "environment": settings.app_env,
         "live_trading_enabled": settings.live_trading_enabled,
         "broker_access_configured": bool(settings.broker_access_token),
+        "market_data_provider": settings.market_data_provider,
+        "market_data_configured": bool(settings.upstox_analytics_token) if settings.market_data_provider.lower() == "upstox" else bool(settings.broker_access_token),
         "persistence_enabled": False,
     }
