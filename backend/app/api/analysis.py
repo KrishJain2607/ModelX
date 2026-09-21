@@ -1,5 +1,7 @@
 from datetime import date, timedelta
+from email.message import EmailMessage
 from math import floor
+import smtplib
 from time import sleep
 from uuid import uuid4
 
@@ -235,13 +237,14 @@ def open_paper_trade(
     entry_price: float = Query(..., gt=0),
     stop_loss: float = Query(..., gt=0),
     target_price: float = Query(..., gt=0),
+    available_capital: float = Query(..., gt=0),
 ) -> dict[str, object]:
     try:
         plan = _risk_plan(
             entry_price,
             stop_loss,
             target_price,
-            available_capital=max(entry_price * quantity, entry_price),
+            available_capital=available_capital,
             current_exposure=0.0,
             open_positions=sum(1 for t in _paper_trades.values() if t["status"] == "OPEN"),
         )
@@ -265,6 +268,49 @@ def open_paper_trade(
     }
     _paper_trades[trade_id] = trade
     return {"execution_enabled": False, "trade": trade, "risk_plan": plan}
+
+
+@router.post("/email-scan")
+def email_scan(
+    symbols: str = Query(..., description="Comma-separated NSE symbols; maximum 10"),
+) -> dict[str, object]:
+    if not settings.alert_to_email or not settings.smtp_host or not settings.smtp_username or not settings.smtp_password:
+        raise HTTPException(status_code=503, detail="SMTP alert settings are not fully configured")
+
+    result = scan(symbols=symbols, interval="day")
+    lines = [
+        "ModelX daily research scan",
+        f"Date: {date.today().isoformat()}",
+        f"Provider: {settings.market_data_provider}",
+        "",
+    ]
+    for item in result["results"]:
+        if item.get("status") != "OK":
+            lines.append(f"{item.get('symbol')}: {item.get('status')}")
+            continue
+        lines.append(f"{item['symbol']}: {item['score']}/100 — {item['signal']} — {item['market_regime']}")
+        if item.get("bullish_factors"):
+            lines.append("  Factors: " + "; ".join(item["bullish_factors"][:4]))
+        if item.get("risks"):
+            lines.append("  Risks: " + "; ".join(item["risks"][:4]))
+        lines.append("")
+    lines.append("Research only. No orders were placed and scores are not probabilities of profit.")
+
+    message = EmailMessage()
+    message["Subject"] = f"ModelX research scan — {date.today().isoformat()}"
+    message["From"] = settings.alert_from_email or settings.smtp_username
+    message["To"] = settings.alert_to_email
+    message.set_content("\n".join(lines))
+
+    try:
+        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
+            server.starttls()
+            server.login(settings.smtp_username, settings.smtp_password)
+            server.send_message(message)
+    except Exception as exc:
+        raise HTTPException(status_code=502, detail="SMTP delivery failed") from exc
+
+    return {"sent": True, "recipient": settings.alert_to_email, "symbols": symbols, "scan": result}
 
 
 @router.post("/paper-trades/{trade_id}/mark")
