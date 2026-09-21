@@ -6,7 +6,7 @@ import httpx
 
 
 class UpstoxMarketDataClient:
-    """Read-only market-data client using an Upstox Analytics/market-data token."""
+    """Read-only Upstox market-data client using an Analytics Token."""
 
     BASE_URL = "https://api.upstox.com"
 
@@ -35,11 +35,19 @@ class UpstoxMarketDataClient:
     def search_equity(self, query: str, exchange: str = "NSE") -> list[dict[str, Any]]:
         payload = self._get(
             "/v2/instruments/search",
-            params={"query": query, "exchanges": exchange, "segments": "EQ", "instrument_types": "EQ"},
+            params={
+                "query": query,
+                "exchanges": exchange,
+                "segments": "EQ",
+                "instrument_types": "EQ",
+                "page_number": 1,
+                "records": 30,
+            },
         )
         return [
             row for row in payload.get("data", [])
-            if row.get("exchange") == exchange and row.get("segment") == f"{exchange}_EQ"
+            if row.get("exchange") == exchange
+            and row.get("segment") == f"{exchange}_EQ"
             and row.get("instrument_type") == "EQ"
         ]
 
@@ -58,6 +66,12 @@ class UpstoxMarketDataClient:
             unit, value = "hours", interval.removesuffix("hour")
         else:
             raise ValueError(f"Unsupported Upstox interval: {interval}")
+
+        value_int = int(value)
+        if unit == "minutes" and not 1 <= value_int <= 300:
+            raise ValueError("Upstox minute interval must be between 1 and 300")
+        if unit == "hours" and not 1 <= value_int <= 5:
+            raise ValueError("Upstox hour interval must be between 1 and 5")
 
         payload = self._get(
             f"/v3/historical-candle/{instrument_key}/{unit}/{value}/{to_date}/{from_date}",
