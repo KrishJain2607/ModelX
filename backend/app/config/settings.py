@@ -7,6 +7,8 @@ class Settings(BaseSettings):
     broker_api_key: str = ""
     broker_api_secret: str = ""
     broker_access_token: str = ""
+    market_data_provider: str = "kite"
+    upstox_analytics_token: str = ""
     ai_api_key: str = ""
     ai_model: str = ""
     smtp_host: str = ""
