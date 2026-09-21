@@ -2,40 +2,56 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.broker import KiteConfig, KiteReadOnlyClient
 from app.config.settings import settings
+from app.market_data.upstox import UpstoxMarketDataClient
 
 router = APIRouter(prefix="/market", tags=["market-data"])
 
 
-def _client() -> KiteReadOnlyClient:
+def _kite() -> KiteReadOnlyClient:
     return KiteReadOnlyClient(
         KiteConfig(settings.broker_api_key, settings.broker_api_secret, settings.broker_access_token)
     )
 
 
+def _upstox() -> UpstoxMarketDataClient:
+    return UpstoxMarketDataClient(settings.upstox_analytics_token)
+
+
+def _using_upstox() -> bool:
+    return settings.market_data_provider.lower() == "upstox"
+
+
 def _require_auth() -> None:
-    if not settings.broker_access_token:
+    if _using_upstox():
+        if not settings.upstox_analytics_token:
+            raise HTTPException(status_code=401, detail="Upstox analytics token is not configured")
+    elif not settings.broker_access_token:
         raise HTTPException(status_code=401, detail="Kite access token is not configured")
 
 
-def _equity_instruments(exchange: str = "NSE") -> list[dict]:
-    rows = _client().instruments(exchange)
-    return [
-        {
-            "instrument_token": r["instrument_token"],
-            "tradingsymbol": r["tradingsymbol"],
-            "name": r.get("name") or r["tradingsymbol"],
-            "exchange": r.get("exchange", exchange),
-        }
-        for r in rows
-        if r.get("segment") == exchange and r.get("instrument_type") == "EQ"
-    ]
+def _normalise(row: dict) -> dict:
+    return {
+        "instrument_token": row.get("instrument_key") or row.get("instrument_token"),
+        "tradingsymbol": row.get("trading_symbol") or row.get("tradingsymbol"),
+        "name": row.get("name") or row.get("short_name") or row.get("trading_symbol") or row.get("tradingsymbol"),
+        "exchange": row.get("exchange", "NSE"),
+    }
 
 
 @router.get("/instruments")
 def instruments(exchange: str = Query("NSE")) -> dict[str, object]:
     _require_auth()
+    if _using_upstox():
+        raise HTTPException(
+            status_code=400,
+            detail="Use /api/market/search for Upstox instrument discovery; full instrument download is intentionally not loaded into memory.",
+        )
     try:
-        equity = _equity_instruments(exchange)
+        rows = _kite().instruments(exchange)
+        equity = [
+            _normalise(r) for r in rows
+            if r.get("segment") == exchange and r.get("instrument_type") == "EQ"
+        ]
     except Exception as exc:
         raise HTTPException(status_code=502, detail="Kite instrument request failed") from exc
     return {"exchange": exchange, "count": len(equity), "instruments": equity}
@@ -46,36 +62,37 @@ def search(
     q: str = Query(..., min_length=1, max_length=40),
     exchange: str = Query("NSE"),
 ) -> dict[str, object]:
-    """Resolve a human-friendly stock symbol/name to NSE equity instruments."""
     _require_auth()
     query = q.strip().upper()
     try:
-        equity = _equity_instruments(exchange)
+        if _using_upstox():
+            rows = _upstox().search_equity(query, exchange)
+            results = [_normalise(r) for r in rows[:20]]
+        else:
+            rows = _kite().instruments(exchange)
+            equity = [
+                _normalise(r) for r in rows
+                if r.get("segment") == exchange and r.get("instrument_type") == "EQ"
+            ]
+            exact = [item for item in equity if item["tradingsymbol"].upper() == query]
+            starts = [item for item in equity if item not in exact and item["tradingsymbol"].upper().startswith(query)]
+            contains = [
+                item for item in equity
+                if item not in exact and query in item["tradingsymbol"].upper()
+                or item not in exact and query in item["name"].upper()
+            ]
+            results = (exact + starts + contains)[:20]
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Kite instrument request failed") from exc
-
-    exact = [
-        item for item in equity
-        if item["tradingsymbol"].upper() == query
-    ]
-    starts = [
-        item for item in equity
-        if item not in exact and item["tradingsymbol"].upper().startswith(query)
-    ]
-    contains = [
-        item for item in equity
-        if item not in exact
-        and (query in item["tradingsymbol"].upper() or query in item["name"].upper())
-    ]
-    results = (exact + starts + contains)[:20]
-    return {"query": q, "count": len(results), "results": results}
+        provider = "Upstox" if _using_upstox() else "Kite"
+        raise HTTPException(status_code=502, detail=f"{provider} instrument search failed") from exc
+    return {"query": q, "count": len(results), "results": results, "provider": settings.market_data_provider}
 
 
-@router.get("/candles/{instrument_token}")
+@router.get("/candles/{instrument_token:path}")
 def candles(
-    instrument_token: int,
-    from_date: str = Query(..., description="YYYY-MM-DD HH:MM:SS"),
-    to_date: str = Query(..., description="YYYY-MM-DD HH:MM:SS"),
+    instrument_token: str,
+    from_date: str = Query(..., description="YYYY-MM-DD"),
+    to_date: str = Query(..., description="YYYY-MM-DD"),
     interval: str = Query("day"),
 ) -> dict[str, object]:
     _require_auth()
@@ -83,7 +100,17 @@ def candles(
     if interval not in allowed:
         raise HTTPException(status_code=400, detail="Unsupported candle interval")
     try:
-        data = _client().historical_data(instrument_token, from_date, to_date, interval)
+        if _using_upstox():
+            data = _upstox().historical_data(instrument_token, from_date, to_date, interval)
+        else:
+            data = _kite().historical_data(int(instrument_token), from_date, to_date, interval)
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="Kite historical data request failed") from exc
-    return {"instrument_token": instrument_token, "interval": interval, "count": len(data), "candles": data}
+        provider = "Upstox" if _using_upstox() else "Kite"
+        raise HTTPException(status_code=502, detail=f"{provider} historical data request failed") from exc
+    return {
+        "instrument_token": instrument_token,
+        "interval": interval,
+        "count": len(data),
+        "candles": data,
+        "provider": settings.market_data_provider,
+    }
