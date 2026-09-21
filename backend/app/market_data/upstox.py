@@ -34,8 +34,8 @@ class UpstoxMarketDataClient:
 
     def search_equity(self, query: str, exchange: str = "NSE") -> list[dict[str, Any]]:
         payload = self._get(
-            "/v3/instruments/search",
-            params={"query": query, "exchanges": exchange, "segments": "EQ"},
+            "/v2/instruments/search",
+            params={"query": query, "exchanges": exchange, "segments": "EQ", "instrument_types": "EQ"},
         )
         return [
             row for row in payload.get("data", [])
