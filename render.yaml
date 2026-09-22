@@ -12,7 +12,11 @@ services:
         value: production
       - key: LIVE_TRADING_ENABLED
         value: "false"
+      - key: MARKET_DATA_PROVIDER
+        value: upstox
       - key: BROKER_API_KEY
         sync: false
       - key: BROKER_API_SECRET
+        sync: false
+      - key: UPSTOX_ANALYTICS_TOKEN
         sync: false
