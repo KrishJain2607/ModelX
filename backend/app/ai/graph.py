@@ -29,7 +29,10 @@ class CouncilState(TypedDict, total=False):
 def _model(model_name: str):
     if not settings.ai_api_key:
         raise RuntimeError("AI API key is not configured")
-    model = ChatOpenAI(api_key=settings.ai_api_key, model=model_name, temperature=0.1)
+    selected_model = model_name or settings.ai_model
+    if not selected_model:
+        raise RuntimeError("AI model is not configured")
+    model = ChatOpenAI(api_key=settings.ai_api_key, model=selected_model, temperature=0.1)
     return model
 
 
