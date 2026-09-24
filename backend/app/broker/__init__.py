@@ -5,5 +5,6 @@ separated from market-data access.
 """
 
 from app.broker.kite_client import KiteConfig, KiteReadOnlyClient
+from app.broker.kite_execution import KiteExecutionClient
 
-__all__ = ["KiteConfig", "KiteReadOnlyClient"]
+__all__ = ["KiteConfig", "KiteReadOnlyClient", "KiteExecutionClient"]
