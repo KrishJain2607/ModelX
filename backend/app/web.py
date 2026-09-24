@@ -161,6 +161,8 @@ async function searchStock() {
   if(!data.results?.length) box.textContent='No matching NSE equity found.';
 }
 function selectStock(item){
+  window.modelXSelected=item;
+  window.modelXCouncil=null;
   document.getElementById('token').value=item.instrument_token;
   document.getElementById('selected').textContent=item.tradingsymbol+' — '+(item.name||'');
   document.getElementById('paperSymbol').value=item.tradingsymbol;
