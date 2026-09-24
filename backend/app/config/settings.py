@@ -11,6 +11,11 @@ class Settings(BaseSettings):
     upstox_analytics_token: str = ""
     ai_api_key: str = ""
     ai_model: str = ""
+    ai_technical_model: str = ""
+    ai_trend_model: str = ""
+    ai_news_model: str = ""
+    ai_sentiment_model: str = ""
+    ai_reasoning_model: str = ""
     smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_username: str = ""
