@@ -73,6 +73,7 @@ PAGE = """<!doctype html>
       <div id="selected">No stock selected.</div>
       <input id="token" type="hidden">
       <button onclick="analyze()">Run analysis</button>
+      <button class="secondary" onclick="sendApproval()">Send trade approval email</button>
       <div id="score"></div>
       <div id="metrics" class="metrics"></div>
       <div id="factors"></div>
@@ -233,6 +234,34 @@ async function markTrade(id){
   const p=new URLSearchParams({price});
   const {data}=await getJson('/api/analysis/paper-trades/'+encodeURIComponent(id)+'/mark?'+p.toString(),{method:'POST'});
   show('paperRaw',data); await loadPaperTrades();
+}
+async function sendApproval(){
+  const token=document.getElementById('token').value;
+  if(!token){show('analysisResult',{error:'Search and select a stock first'});return;}
+  const ratingText=document.querySelector('#score .score')?.textContent||'0';
+  const rating=parseInt(ratingText,10);
+  const entry=parseFloat(document.getElementById('paperEntry').value);
+  const stop=parseFloat(document.getElementById('paperStop').value);
+  const target=parseFloat(document.getElementById('paperTarget').value);
+  const quantity=parseInt(document.getElementById('paperQty').value,10);
+  const riskPerShare=entry-stop;
+  const riskReward=(target-entry)/riskPerShare;
+  const capitalAtRisk=quantity*riskPerShare;
+  const signal=document.querySelector('#score .signal')?.textContent||'BUY_CANDIDATE';
+  const p=new URLSearchParams({
+    symbol:document.getElementById('paperSymbol').value,
+    rating:String(rating),
+    signal,
+    market_regime:'BULLISH_TREND',
+    entry_price:String(entry),
+    stop_loss:String(stop),
+    target_price:String(target),
+    quantity:String(quantity),
+    risk_reward:String(riskReward),
+    capital_at_risk:String(capitalAtRisk)
+  });
+  const {data}=await getJson('/api/approvals/send?'+p.toString(),{method:'POST'});
+  show('analysisResult',data);
 }
 async function emailScan(){
   const symbols=document.getElementById('watchlist').value.trim(); if(!symbols)return;
