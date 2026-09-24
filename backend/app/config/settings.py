@@ -26,6 +26,12 @@ class Settings(BaseSettings):
     max_total_exposure: float = 0.60
     min_risk_reward: float = 2.0
 
+    # Live execution is deliberately separated from the Render research service.
+    # The gateway should live behind a fixed public IP when live trading is enabled.
+    execution_gateway_url: str = ""
+    execution_gateway_secret: str = ""
+    execution_gateway_timeout_seconds: int = 15
+
     def approval_recipients(self) -> list[str]:
         return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]
 
