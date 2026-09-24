@@ -25,6 +25,40 @@ def _base_url() -> str:
 
 
 def _send_html(subject: str, recipients: list[str], html_body: str, text_body: str) -> None:
+    """Send approval email without depending on Render's outbound SMTP."""
+    provider = settings.email_provider.strip().lower()
+    sender = settings.email_sender or settings.alert_from_email or settings.smtp_username
+
+    if provider == "brevo":
+        if not settings.brevo_api_key or not sender:
+            raise RuntimeError("Brevo email settings are not fully configured")
+        import httpx
+        payload = {
+            "sender": {"email": sender, "name": "ModelX"},
+            "to": [{"email": recipient} for recipient in recipients],
+            "subject": subject,
+            "textContent": text_body,
+            "htmlContent": html_body,
+        }
+        logger.info("[SMTP] Using Brevo HTTP email API; recipients=%d", len(recipients))
+        response = httpx.post(
+            "https://api.brevo.com/v3/smtp/email",
+            headers={
+                "accept": "application/json",
+                "api-key": settings.brevo_api_key,
+                "content-type": "application/json",
+            },
+            json=payload,
+            timeout=20.0,
+        )
+        if response.is_error:
+            logger.error("[EMAIL] Brevo delivery failed: status=%s body=%s", response.status_code, response.text[:500])
+            response.raise_for_status()
+        logger.info("[EMAIL] Approval email sent successfully via Brevo")
+        return
+
+    if provider != "smtp":
+        raise RuntimeError(f"Unsupported email provider: {provider}")
     if not settings.smtp_host or not settings.smtp_username or not settings.smtp_password:
         raise RuntimeError("SMTP settings are not fully configured")
     message = EmailMessage()
@@ -33,11 +67,14 @@ def _send_html(subject: str, recipients: list[str], html_body: str, text_body: s
     message["To"] = ", ".join(recipients)
     message.set_content(text_body)
     message.add_alternative(html_body, subtype="html")
+    logger.info("[SMTP] Connecting to %s:%s", settings.smtp_host, settings.smtp_port)
     with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
         server.starttls()
+        logger.info("[SMTP] TLS established")
         server.login(settings.smtp_username, settings.smtp_password)
+        logger.info("[SMTP] Authentication successful")
         server.send_message(message)
-
+    logger.info("[EMAIL] Approval email sent successfully via SMTP")
 
 def _approval_email(token: str, trade: dict) -> tuple[str, str, str]:
     recipients = settings.approval_recipients()
@@ -177,7 +214,7 @@ def send_trade_approval(
     except Exception:
         # Keep SMTP details out of the browser response, but log the full
         # exception server-side so Render can diagnose delivery failures.
-        logger.exception("ModelX approval email delivery failed")
+        logger.exception("[EMAIL] ModelX approval email delivery failed")
         raise HTTPException(status_code=502, detail="Approval email delivery failed") from None
 
     return {
@@ -193,11 +230,44 @@ def send_trade_approval(
 def _execute(record: dict) -> dict:
     trade = record["trade"]
     if not settings.live_trading_enabled:
+        from app.api.analysis import _paper_trades
+        from uuid import uuid4
+
+        open_positions = sum(1 for item in _paper_trades.values() if item.get("status") == "OPEN")
+        if open_positions >= settings.max_open_positions:
+            raise RuntimeError("Maximum open paper positions reached")
+
+        trade_id = uuid4().hex[:12]
+        entry = float(trade["entry_price"])
+        stop = float(trade["stop_loss"])
+        target = float(trade["target_price"])
+        quantity = int(trade["quantity"])
+        risk_per_share = entry - stop
+        paper_trade = {
+            "trade_id": trade_id,
+            "symbol": trade["symbol"].upper(),
+            "quantity": quantity,
+            "entry_price": entry,
+            "stop_loss": stop,
+            "target_price": target,
+            "status": "OPEN",
+            "opened_at": date.today().isoformat(),
+            "exit_price": None,
+            "realized_pnl": None,
+            "risk_per_share": risk_per_share,
+            "planned_capital_at_risk": quantity * risk_per_share,
+            "planned_risk_reward": float(trade["risk_reward"]),
+            "approval_id": record["approval_id"],
+            "source": "EMAIL_APPROVAL",
+        }
+        _paper_trades[trade_id] = paper_trade
+        logger.info("[PAPER] Approved trade opened: id=%s symbol=%s qty=%s entry=%.2f sl=%.2f target=%.2f", trade_id, trade["symbol"], quantity, entry, stop, target)
         return {
             "mode": "PAPER",
-            "status": "PAPER_APPROVED",
+            "status": "PAPER_OPENED",
+            "trade_id": trade_id,
             "symbol": trade["symbol"],
-            "quantity": trade["quantity"],
+            "quantity": quantity,
         }
 
     try:
