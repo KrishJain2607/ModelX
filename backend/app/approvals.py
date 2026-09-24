@@ -50,7 +50,7 @@ def create_approval(trade: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     return f"{payload}.{_sign(payload)}", record
 
 
-def resolve(token: str, decision: str, recipient: str) -> dict[str, Any]:
+def resolve(token: str, decision: str, recipient: str | None = None) -> dict[str, Any]:
     try:
         payload, signature = token.split(".", 1)
         if not hmac.compare_digest(signature, _sign(payload)):
@@ -74,7 +74,7 @@ def resolve(token: str, decision: str, recipient: str) -> dict[str, Any]:
         return record
 
     if decision == "reject":
-        record["rejected_by"].append(recipient.lower())
+        record["rejected_by"].append((recipient or "shared-approval-link").lower())
         record["status"] = "REJECTED"
         return record
 
@@ -82,7 +82,7 @@ def resolve(token: str, decision: str, recipient: str) -> dict[str, Any]:
         raise ValueError("Decision must be approve or reject")
 
     record["status"] = "APPROVED"
-    record["approved_by"] = recipient.lower()
+    record["approved_by"] = (recipient or "shared-approval-link").lower()
     return record
 
 
