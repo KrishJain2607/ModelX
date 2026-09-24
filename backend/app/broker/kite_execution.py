@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.broker import KiteConfig
 from app.config.settings import settings
 from kiteconnect import KiteConnect
 
