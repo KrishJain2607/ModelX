@@ -12,6 +12,7 @@ from fastapi.responses import HTMLResponse
 from app.approvals import create_approval, get, mark_executed, mark_execution_failed, resolve
 from app.broker import KiteExecutionClient
 from app.config.settings import settings
+from app.api.analysis import _risk_plan
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -121,6 +122,7 @@ def send_trade_approval(
     quantity: int = Query(..., gt=0),
     risk_reward: float = Query(..., gt=0),
     capital_at_risk: float = Query(..., ge=0),
+    available_capital: float = Query(..., gt=0),
 ) -> dict[str, object]:
     if not settings.approval_secret:
         raise HTTPException(status_code=503, detail="Approval secret is not configured")
@@ -131,6 +133,27 @@ def send_trade_approval(
         raise HTTPException(status_code=400, detail="Only BUY_CANDIDATE signals can request trade approval")
     if risk_reward < settings.min_risk_reward:
         raise HTTPException(status_code=400, detail="Trade does not meet the configured minimum risk/reward")
+    try:
+        plan = _risk_plan(
+            entry_price,
+            stop_loss,
+            target_price,
+            available_capital=available_capital,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    if not plan["eligible_for_paper_trade"]:
+        raise HTTPException(status_code=400, detail={"risk_plan": plan})
+    if quantity > int(plan["position_size"]):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Requested quantity exceeds the configured risk-based position size",
+                "requested_quantity": quantity,
+                "maximum_quantity": plan["position_size"],
+                "risk_plan": plan,
+            },
+        )
 
     trade = {
         "symbol": symbol.upper(),
@@ -141,8 +164,8 @@ def send_trade_approval(
         "stop_loss": stop_loss,
         "target_price": target_price,
         "quantity": quantity,
-        "risk_reward": risk_reward,
-        "capital_at_risk": capital_at_risk,
+        "risk_reward": plan["risk_reward"],
+        "capital_at_risk": quantity * plan["risk_per_share"],
     }
     token, record = create_approval(trade)
     subject, text_body, html_body = _approval_email(token, trade)
