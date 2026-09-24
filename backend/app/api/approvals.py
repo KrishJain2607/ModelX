@@ -40,7 +40,7 @@ def _send_html(subject: str, recipients: list[str], html_body: str, text_body: s
             "textContent": text_body,
             "htmlContent": html_body,
         }
-        logger.info("[SMTP] Using Brevo HTTP email API; recipients=%d", len(recipients))
+        logger.info("[EMAIL] provider=brevo transport=https recipients=%d", len(recipients))
         response = httpx.post(
             "https://api.brevo.com/v3/smtp/email",
             headers={
@@ -52,9 +52,9 @@ def _send_html(subject: str, recipients: list[str], html_body: str, text_body: s
             timeout=20.0,
         )
         if response.is_error:
-            logger.error("[EMAIL] Brevo delivery failed: status=%s body=%s", response.status_code, response.text[:500])
+            logger.error("[EMAIL] Brevo delivery failed: status=%s", response.status_code)
             response.raise_for_status()
-        logger.info("[EMAIL] Approval email sent successfully via Brevo")
+        logger.info("[EMAIL] Approval email accepted by Brevo")
         return
 
     if provider != "smtp":
