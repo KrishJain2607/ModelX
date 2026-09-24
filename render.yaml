@@ -18,5 +18,23 @@ services:
         sync: false
       - key: BROKER_API_SECRET
         sync: false
+      - key: BROKER_ACCESS_TOKEN
+        sync: false
       - key: UPSTOX_ANALYTICS_TOKEN
+        sync: false
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        value: krishjain2607@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: ALERT_FROM_EMAIL
+        value: krishjain2607@gmail.com
+      - key: ALERT_TO_EMAIL
+        value: krishjain2607@gmail.com,sakshigairola65@gmail.com
+      - key: PUBLIC_BASE_URL
+        value: https://modelx-poc.onrender.com
+      - key: APPROVAL_SECRET
         sync: false
