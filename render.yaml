@@ -38,3 +38,9 @@ services:
         value: https://modelx-poc.onrender.com
       - key: APPROVAL_SECRET
         sync: false
+      - key: EXECUTION_GATEWAY_URL
+        sync: false
+      - key: EXECUTION_GATEWAY_SECRET
+        sync: false
+      - key: EXECUTION_GATEWAY_TIMEOUT_SECONDS
+        value: "15"
