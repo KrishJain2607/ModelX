@@ -170,12 +170,19 @@ async function analyze(){
   const {r,data}=await getJson('/api/analysis/'+encodeURIComponent(token)+'?interval=day');
   show('analysisResult',data);
   if(!r.ok)return;
+  window.modelXAnalysis=data;
   document.getElementById('score').innerHTML='<div class="score">'+data.score+'/100</div><div class="signal">'+data.signal+'</div>';
-  const v=data.latest_values||{};
+  const v=data.latest||{};
+  if(v.close){
+    const atr=Number(v.atr14||0);
+    document.getElementById('paperEntry').value=Number(v.close).toFixed(2);
+    document.getElementById('paperStop').value=Math.max(0,Number(v.close)-1.5*atr).toFixed(2);
+    document.getElementById('paperTarget').value=(Number(v.close)+3*atr).toFixed(2);
+  }
   document.getElementById('metrics').innerHTML=[
-    ['Regime',data.market_regime],['Data quality',data.data_quality],
+    ['Regime',data.market_regime],['Data quality',data.data_quality?.status],
     ['Close',v.close],['RSI14',v.rsi14],['ATR%',v.atr_pct],
-    ['Volume ratio',v.volume_ratio]
+    ['Volume ratio',v.volume_ratio20]
   ].map(x=>'<div class="metric">'+x[0]+'<b>'+String(x[1]??'—')+'</b></div>').join('');
   const factors=[...(data.bullish_factors||[]).map(x=>'<div class="factor ok">✓ '+x+'</div>'),
                  ...(data.risks||[]).map(x=>'<div class="factor warn">⚠ '+x+'</div>')];
@@ -247,18 +254,20 @@ async function sendApproval(){
   const riskPerShare=entry-stop;
   const riskReward=(target-entry)/riskPerShare;
   const capitalAtRisk=quantity*riskPerShare;
-  const signal=document.querySelector('#score .signal')?.textContent||'BUY_CANDIDATE';
+  const signal=window.modelXAnalysis?.signal||document.querySelector('#score .signal')?.textContent||'BUY_CANDIDATE';
+  const regime=window.modelXAnalysis?.market_regime||'RANGE_OR_TRANSITION';
   const p=new URLSearchParams({
     symbol:document.getElementById('paperSymbol').value,
     rating:String(rating),
     signal,
-    market_regime:'BULLISH_TREND',
+    market_regime:regime,
     entry_price:String(entry),
     stop_loss:String(stop),
     target_price:String(target),
     quantity:String(quantity),
     risk_reward:String(riskReward),
-    capital_at_risk:String(capitalAtRisk)
+    capital_at_risk:String(capitalAtRisk),
+    available_capital:document.getElementById('paperCapital').value
   });
   const {data}=await getJson('/api/approvals/send?'+p.toString(),{method:'POST'});
   show('analysisResult',data);
