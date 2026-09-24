@@ -11,18 +11,29 @@ class Settings(BaseSettings):
     upstox_analytics_token: str = ""
     ai_api_key: str = ""
     ai_model: str = ""
-    smtp_host: str = ""
+    smtp_host: str = "smtp.gmail.com"
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
-    alert_from_email: str = ""
-    alert_to_email: str = ""
+    alert_from_email: str = "krishjain2607@gmail.com"
+    alert_to_email: str = "krishjain2607@gmail.com,sakshigairola65@gmail.com"
+    public_base_url: str = "https://modelx-poc.onrender.com"
+    approval_secret: str = ""
+    approval_ttl_minutes: int = 30
     max_risk_per_trade: float = 0.005
     max_daily_loss: float = 0.02
     max_open_positions: int = 5
     max_total_exposure: float = 0.60
     min_risk_reward: float = 2.0
-    model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8", extra="ignore")
+
+    def approval_recipients(self) -> list[str]:
+        return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]
+
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
 
 
 settings = Settings()

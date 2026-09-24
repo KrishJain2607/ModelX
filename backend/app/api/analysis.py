@@ -261,6 +261,21 @@ def open_paper_trade(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     if not plan["eligible_for_paper_trade"]:
         raise HTTPException(status_code=400, detail={"risk_plan": plan})
+    if quantity > int(plan["position_size"]):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": "Requested quantity exceeds the configured risk-based position size",
+                "requested_quantity": quantity,
+                "maximum_quantity": plan["position_size"],
+                "risk_plan": plan,
+            },
+        )
+    if quantity * entry_price > available_capital:
+        raise HTTPException(
+            status_code=400,
+            detail="Paper trade notional value cannot exceed available capital",
+        )
 
     trade_id = uuid4().hex[:12]
     trade = {
@@ -274,6 +289,9 @@ def open_paper_trade(
         "opened_at": date.today().isoformat(),
         "exit_price": None,
         "realized_pnl": None,
+        "risk_per_share": plan["risk_per_share"],
+        "planned_capital_at_risk": quantity * plan["risk_per_share"],
+        "planned_risk_reward": plan["risk_reward"],
     }
     _paper_trades[trade_id] = trade
     return {"execution_enabled": False, "trade": trade, "risk_plan": plan}
