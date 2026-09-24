@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     smtp_port: int = 587
     smtp_username: str = ""
     smtp_password: str = ""
+    email_provider: str = "brevo"
+    brevo_api_key: str = ""
+    email_sender: str = "krishjain2607@gmail.com"
     alert_from_email: str = "krishjain2607@gmail.com"
     alert_to_email: str = "krishjain2607@gmail.com,sakshigairola65@gmail.com"
     public_base_url: str = "https://modelx-poc.onrender.com"
