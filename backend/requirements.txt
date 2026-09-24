@@ -7,3 +7,7 @@ numpy>=2.0,<3.0
 kiteconnect>=5.2.2,<6.0
 pytest>=8.3,<9.0
 httpx>=0.28,<1.0
+
+langchain>=1.0,<2.0
+langchain-openai>=1.0,<2.0
+langgraph>=1.0,<2.0
