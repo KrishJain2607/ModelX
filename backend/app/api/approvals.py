@@ -272,7 +272,7 @@ def _execute(record: dict) -> dict:
 def approval_action(
     token: str,
     decision: str = Query(...),
-    recipient: str = Query(...),
+    recipient: str | None = Query(None),
 ) -> HTMLResponse:
     try:
         record = resolve(token, decision.lower(), recipient)
