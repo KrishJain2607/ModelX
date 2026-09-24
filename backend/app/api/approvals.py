@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import logging
 import smtplib
 from datetime import date
 from email.message import EmailMessage
@@ -13,6 +14,8 @@ from app.approvals import create_approval, get, mark_executed, mark_execution_fa
 from app.broker import KiteExecutionClient
 from app.config.settings import settings
 from app.api.analysis import _risk_plan
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/approvals", tags=["approvals"])
 
@@ -171,8 +174,11 @@ def send_trade_approval(
     subject, text_body, html_body = _approval_email(token, trade)
     try:
         _send_html(subject, recipients, html_body, text_body)
-    except Exception as exc:
-        raise HTTPException(status_code=502, detail="Approval email delivery failed") from exc
+    except Exception:
+        # Keep SMTP details out of the browser response, but log the full
+        # exception server-side so Render can diagnose delivery failures.
+        logger.exception("ModelX approval email delivery failed")
+        raise HTTPException(status_code=502, detail="Approval email delivery failed") from None
 
     return {
         "sent": True,
