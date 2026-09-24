@@ -30,6 +30,12 @@ services:
         value: krishjain2607@gmail.com
       - key: SMTP_PASSWORD
         sync: false
+      - key: EMAIL_PROVIDER
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_SENDER
+        value: krishjain2607@gmail.com
       - key: ALERT_FROM_EMAIL
         value: krishjain2607@gmail.com
       - key: ALERT_TO_EMAIL
