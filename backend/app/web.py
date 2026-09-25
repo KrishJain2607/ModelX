@@ -319,7 +319,13 @@ async function loadPaperTrades(button){
     div.innerHTML='<strong>'+t.symbol+'</strong><span class="pill">'+t.status+'</span><br>'+
       '<span class="muted">Qty '+t.quantity+' · Entry '+t.entry_price+' · SL '+t.stop_loss+' · Target '+t.target_price+
       (t.realized_pnl!==null?' · P&L '+t.realized_pnl:'')+'</span>'+
-      (t.status==='OPEN'?'<button class="secondary" onclick="markTrade(\\''+t.trade_id+'\\')">Mark price</button>':'');
+    if(t.status==='OPEN'){
+      const action=document.createElement('button');
+      action.className='secondary';
+      action.textContent='Mark price';
+      action.onclick=()=>markTrade(t.trade_id);
+      div.appendChild(action);
+    }
     box.appendChild(div);
   });
   setBusy(button,false);
