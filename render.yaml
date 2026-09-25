@@ -22,20 +22,24 @@ services:
         sync: false
       - key: UPSTOX_ANALYTICS_TOKEN
         sync: false
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gpt-4.1-mini
+        value: gemini-3-flash-preview
       - key: AI_TECHNICAL_MODEL
-        value: gpt-4.1-mini
+        value: gemini-3-flash-preview
       - key: AI_TREND_MODEL
-        value: gpt-4.1-mini
+        value: gemini-3-flash-preview
       - key: AI_NEWS_MODEL
-        value: gpt-4.1-mini
+        value: gemini-3-flash-preview
       - key: AI_SENTIMENT_MODEL
-        value: gpt-4.1-mini
+        value: gemini-3-flash-preview
       - key: AI_REASONING_MODEL
-        value: gpt-4.1
+        value: gemini-3-flash-preview
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
