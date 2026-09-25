@@ -30,16 +30,6 @@ services:
         sync: false
       - key: AI_MODEL
         value: gemini-3-flash-preview
-      - key: AI_TECHNICAL_MODEL
-        value: gemini-3-flash-preview
-      - key: AI_TREND_MODEL
-        value: gemini-3-flash-preview
-      - key: AI_NEWS_MODEL
-        value: gemini-3-flash-preview
-      - key: AI_SENTIMENT_MODEL
-        value: gemini-3-flash-preview
-      - key: AI_REASONING_MODEL
-        value: gemini-3-flash-preview
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
