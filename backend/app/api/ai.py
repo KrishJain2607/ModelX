@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from typing import Any
-from fastapi import APIRouter, HTTPException, Query
+import logging
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ai.graph import run_council
 from app.api.analysis import _analyze_token, _date_range, _require_auth, _upstox, _using_upstox
 
 router = APIRouter(prefix="/ai", tags=["ai-council"])
+logger = logging.getLogger(__name__)
 
 
 class CouncilRequest(BaseModel):
@@ -41,6 +43,17 @@ def council(request: CouncilRequest) -> dict[str, Any]:
         )
         return {"status": "OK", "council": result.model_dump(), "data_range": {"from": start_text, "to": end_text}}
     except RuntimeError as exc:
+        logger.exception("[AI COUNCIL] Runtime failure")
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="AI council execution failed") from exc
+        logger.exception("[AI COUNCIL] Execution failed: %s", type(exc).__name__)
+        name = type(exc).__name__
+        if "Authentication" in name or "APIKey" in name:
+            detail = "AI provider authentication failed. Check AI_API_KEY."
+        elif "RateLimit" in name:
+            detail = "AI provider rate limit reached. Check API usage/billing."
+        elif "BadRequest" in name or "InvalidRequest" in name:
+            detail = "AI provider rejected the council request. Check model configuration and structured-output compatibility."
+        else:
+            detail = f"AI council execution failed ({name}). Check Render logs for the underlying exception."
+        raise HTTPException(status_code=502, detail=detail) from exc

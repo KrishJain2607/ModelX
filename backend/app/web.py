@@ -73,6 +73,7 @@ PAGE = """<!doctype html>
       <div id="selected">No stock selected.</div>
       <input id="token" type="hidden">
       <button onclick="analyze()">Run analysis</button>
+      <button class="secondary" onclick="runCouncil()">Run AI Council</button>
       <button class="secondary" onclick="sendApproval()">Send trade approval email</button>
       <div id="score"></div>
       <div id="metrics" class="metrics"></div>
@@ -160,6 +161,8 @@ async function searchStock() {
   if(!data.results?.length) box.textContent='No matching NSE equity found.';
 }
 function selectStock(item){
+  window.modelXSelected=item;
+  window.modelXCouncil=null;
   document.getElementById('token').value=item.instrument_token;
   document.getElementById('selected').textContent=item.tradingsymbol+' — '+(item.name||'');
   document.getElementById('paperSymbol').value=item.tradingsymbol;
@@ -187,6 +190,29 @@ async function analyze(){
   const factors=[...(data.bullish_factors||[]).map(x=>'<div class="factor ok">✓ '+x+'</div>'),
                  ...(data.risks||[]).map(x=>'<div class="factor warn">⚠ '+x+'</div>')];
   document.getElementById('factors').innerHTML=factors.join('');
+}
+async function runCouncil(){
+  const token=document.getElementById('token').value;
+  if(!token){show('analysisResult',{error:'Search and select a stock first'});return;}
+  const selected=window.modelXSelected||{};
+  const body={
+    symbol:selected.trading_symbol||selected.tradingsymbol||document.getElementById('paperSymbol').value,
+    instrument_key:token,
+    news:[],
+    sentiment:{}
+  };
+  const {r,data}=await getJson('/api/ai/council',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){show('analysisResult',data);return;}
+  window.modelXCouncil=data.council;
+  const c=data.council;
+  document.getElementById('score').innerHTML='<div class="score">'+c.final_rating+'/100</div><div class="signal">'+c.council.decision+' · AI Council</div>';
+  const factors=[
+    ...(c.council.strongest_evidence||[]).map(x=>'<div class="factor ok">✓ '+x+'</div>'),
+    ...(c.council.risks||[]).map(x=>'<div class="factor warn">⚠ '+x+'</div>'),
+    ...(c.devil_advocate.contradictions||[]).map(x=>'<div class="factor bad">✕ '+x+'</div>')
+  ];
+  document.getElementById('factors').innerHTML=factors.join('');
+  show('analysisResult',c);
 }
 async function scan(){
   const symbols=document.getElementById('watchlist').value.trim(); if(!symbols)return;
@@ -246,7 +272,7 @@ async function sendApproval(){
   const token=document.getElementById('token').value;
   if(!token){show('analysisResult',{error:'Search and select a stock first'});return;}
   const ratingText=document.querySelector('#score .score')?.textContent||'0';
-  const rating=parseInt(ratingText,10);
+  const rating=window.modelXCouncil?.final_rating ?? parseInt(ratingText,10);
   const entry=parseFloat(document.getElementById('paperEntry').value);
   const stop=parseFloat(document.getElementById('paperStop').value);
   const target=parseFloat(document.getElementById('paperTarget').value);
@@ -254,7 +280,7 @@ async function sendApproval(){
   const riskPerShare=entry-stop;
   const riskReward=(target-entry)/riskPerShare;
   const capitalAtRisk=quantity*riskPerShare;
-  const signal=window.modelXAnalysis?.signal||document.querySelector('#score .signal')?.textContent||'BUY_CANDIDATE';
+  const signal=window.modelXCouncil?.council?.decision||window.modelXAnalysis?.signal||document.querySelector('#score .signal')?.textContent||'BUY_CANDIDATE';
   const regime=window.modelXAnalysis?.market_regime||'RANGE_OR_TRANSITION';
   const p=new URLSearchParams({
     symbol:document.getElementById('paperSymbol').value,
