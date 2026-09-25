@@ -31,6 +31,14 @@ class SentimentAgentReport(AgentFinding):
     sentiment_drivers: list[str] = Field(default_factory=list, max_length=8)
 
 
+class ResearchAnalystReport(BaseModel):
+    """Four research lenses returned in one LLM call."""
+    technical: TechnicalAgentReport
+    trend: TrendAgentReport
+    news: NewsAgentReport
+    sentiment: SentimentAgentReport
+
+
 class DevilAdvocateReport(BaseModel):
     score: int = Field(ge=0, le=100)
     stance: Literal["BULLISH", "NEUTRAL", "BEARISH"]
