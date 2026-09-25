@@ -31,7 +31,7 @@ def health() -> dict[str, object]:
         "broker_access_configured": bool(settings.broker_access_token),
         "market_data_provider": settings.market_data_provider,
         "market_data_configured": bool(settings.upstox_analytics_token) if settings.market_data_provider.lower() == "upstox" else bool(settings.broker_access_token),
-        "ai_configured": bool(settings.ai_api_key and (settings.ai_model or settings.ai_reasoning_model)),
+        "ai_configured": bool((settings.gemini_api_key or settings.ai_api_key) and (settings.ai_model or settings.ai_reasoning_model)),
         "ai_framework": "langgraph",
         "persistence_enabled": False,
     }
