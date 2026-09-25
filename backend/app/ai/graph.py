@@ -36,6 +36,11 @@ def _model(model_name: str):
         api_key = settings.gemini_api_key or settings.ai_api_key
         if not api_key:
             raise RuntimeError("Gemini API key is not configured")
+        # Ignore stale OpenAI model names left in Render from the old provider.
+        if not selected_model or selected_model.lower().startswith(("gpt-", "o1-", "o3-", "o4-")):
+            selected_model = settings.ai_model
+        if not selected_model:
+            raise RuntimeError("Gemini model is not configured")
         return ChatGoogleGenerativeAI(
             google_api_key=api_key,
             model=selected_model,
