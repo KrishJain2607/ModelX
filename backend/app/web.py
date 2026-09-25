@@ -318,7 +318,7 @@ async function loadPaperTrades(button){
     const div=document.createElement('div');div.className='result';
     div.innerHTML='<strong>'+t.symbol+'</strong><span class="pill">'+t.status+'</span><br>'+
       '<span class="muted">Qty '+t.quantity+' · Entry '+t.entry_price+' · SL '+t.stop_loss+' · Target '+t.target_price+
-      (t.realized_pnl!==null?' · P&L '+t.realized_pnl:'')+'</span>'+
+      (t.realized_pnl!==null?' · P&L '+t.realized_pnl:'')+'</span>';
     if(t.status==='OPEN'){
       const action=document.createElement('button');
       action.className='secondary';
