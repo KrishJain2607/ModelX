@@ -36,6 +36,9 @@ def _build_model(provider: str, model_name: str):
     if provider == "cerebras":
         if not settings.cerebras_api_key:
             raise RuntimeError("Cerebras API key is not configured")
+        # Ignore stale Gemini/OpenAI role-specific model env vars left on Render.
+        if selected_model.lower().startswith(("gemini-", "gpt-4", "o1-", "o3-", "o4-")):
+            selected_model = settings.ai_model
         return ChatOpenAI(
             api_key=settings.cerebras_api_key,
             model=selected_model,
