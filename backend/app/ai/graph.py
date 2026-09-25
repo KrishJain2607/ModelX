@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from typing import Any, TypedDict
 
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
@@ -27,10 +28,25 @@ class CouncilState(TypedDict, total=False):
 
 
 def _model(model_name: str):
-    if not settings.ai_api_key:
-        raise RuntimeError("AI API key is not configured")
-    model = ChatOpenAI(api_key=settings.ai_api_key, model=model_name, temperature=0.1)
-    return model
+    provider = settings.ai_provider.strip().lower()
+    if provider == "gemini":
+        api_key = settings.gemini_api_key or settings.ai_api_key
+        if not api_key:
+            raise RuntimeError("Gemini API key is not configured")
+        return ChatGoogleGenerativeAI(
+            google_api_key=api_key,
+            model=model_name or settings.ai_model,
+            temperature=0.1,
+        )
+    if provider == "openai":
+        if not settings.ai_api_key:
+            raise RuntimeError("OpenAI API key is not configured")
+        return ChatOpenAI(
+            api_key=settings.ai_api_key,
+            model=model_name or settings.ai_model,
+            temperature=0.1,
+        )
+    raise RuntimeError(f"Unsupported AI provider: {provider}")
 
 
 def _invoke(model_name: str, system: str, payload: dict[str, Any], schema):
