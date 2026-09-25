@@ -31,7 +31,7 @@ services:
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gemini-2.5-flash
+        value: gemini-3.8-flash
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
