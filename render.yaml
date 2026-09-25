@@ -22,6 +22,12 @@ services:
         sync: false
       - key: UPSTOX_ANALYTICS_TOKEN
         sync: false
+      - key: AI_PROVIDER
+        value: gemini
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gemini-3-flash-preview
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
