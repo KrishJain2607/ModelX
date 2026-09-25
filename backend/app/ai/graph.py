@@ -5,7 +5,6 @@ import logging
 from typing import Any, TypedDict
 
 from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from app.ai.prompts import COUNCIL_SYSTEM, DEVIL_SYSTEM, RESEARCH_SYSTEM
@@ -33,20 +32,6 @@ def _build_model(provider: str, model_name: str):
     if not selected_model:
         raise RuntimeError("AI model is not configured")
 
-    if provider == "cerebras":
-        if not settings.cerebras_api_key:
-            raise RuntimeError("Cerebras API key is not configured")
-        # Ignore stale Gemini/OpenAI role-specific model env vars left on Render.
-        if selected_model.lower().startswith(("gemini-", "gpt-4", "o1-", "o3-", "o4-")):
-            selected_model = settings.ai_model
-        return ChatOpenAI(
-            api_key=settings.cerebras_api_key,
-            model=selected_model,
-            base_url="https://api.cerebras.ai/v1",
-            default_headers={"X-Cerebras-3rd-Party-Integration": "langchain"},
-            temperature=0.1,
-        )
-
     if provider == "gemini":
         api_key = settings.gemini_api_key or settings.ai_api_key
         if not api_key:
@@ -59,20 +44,12 @@ def _build_model(provider: str, model_name: str):
             temperature=0.1,
         )
 
-    if provider == "openai":
-        if not settings.ai_api_key:
-            raise RuntimeError("OpenAI API key is not configured")
-        return ChatOpenAI(api_key=settings.ai_api_key, model=selected_model, temperature=0.1)
-
-    raise RuntimeError(f"Unsupported AI provider: {provider}")
+    raise RuntimeError(f"Unsupported AI provider: {provider}. ModelX is configured for Gemini only.")
 
 
 def _invoke_once(provider: str, model_name: str, system: str, payload: dict[str, Any], schema):
     model = _build_model(provider, model_name)
-    if provider.strip().lower() == "cerebras":
-        chain = model.with_structured_output(schema, method="json_schema")
-    else:
-        chain = model.with_structured_output(schema)
+    chain = model.with_structured_output(schema)
     return chain.invoke([
         ("system", system),
         ("human", json.dumps(payload, default=str, ensure_ascii=False)),
