@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from email.message import EmailMessage
 from math import floor
 import smtplib
+import httpx
 from time import sleep
 from uuid import uuid4
 
@@ -301,7 +302,13 @@ def open_paper_trade(
 def email_scan(
     symbols: str = Query(..., description="Comma-separated NSE symbols; maximum 10"),
 ) -> dict[str, object]:
-    if not settings.alert_to_email or not settings.smtp_host or not settings.smtp_username or not settings.smtp_password:
+    if not settings.alert_to_email:
+        raise HTTPException(status_code=503, detail="Alert recipients are not configured")
+    if settings.email_provider.strip().lower() == "brevo" and not settings.brevo_api_key:
+        raise HTTPException(status_code=503, detail="Brevo email settings are not fully configured")
+    if settings.email_provider.strip().lower() == "smtp" and (
+        not settings.smtp_host or not settings.smtp_username or not settings.smtp_password
+    ):
         raise HTTPException(status_code=503, detail="SMTP alert settings are not fully configured")
 
     result = scan(symbols=symbols, interval="day")
@@ -323,19 +330,47 @@ def email_scan(
         lines.append("")
     lines.append("Research only. No orders were placed and scores are not probabilities of profit.")
 
-    message = EmailMessage()
-    message["Subject"] = f"ModelX research scan — {date.today().isoformat()}"
-    message["From"] = settings.alert_from_email or settings.smtp_username
-    message["To"] = settings.alert_to_email
-    message.set_content("\n".join(lines))
+    subject = f"ModelX research scan — {date.today().isoformat()}"
+    text_body = "\n".join(lines)
+    provider = settings.email_provider.strip().lower()
 
     try:
-        with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
-            server.starttls()
-            server.login(settings.smtp_username, settings.smtp_password)
-            server.send_message(message)
+        if provider == "brevo":
+            recipients = [item.strip() for item in settings.alert_to_email.split(",") if item.strip()]
+            payload = {
+                "sender": {
+                    "email": settings.email_sender or settings.alert_from_email,
+                    "name": "ModelX",
+                },
+                "to": [{"email": recipient} for recipient in recipients],
+                "subject": subject,
+                "textContent": text_body,
+            }
+            response = httpx.post(
+                "https://api.brevo.com/v3/smtp/email",
+                headers={
+                    "accept": "application/json",
+                    "api-key": settings.brevo_api_key,
+                    "content-type": "application/json",
+                },
+                json=payload,
+                timeout=20.0,
+            )
+            response.raise_for_status()
+        elif provider == "smtp":
+            message = EmailMessage()
+            message["Subject"] = subject
+            message["From"] = settings.alert_from_email or settings.smtp_username
+            message["To"] = settings.alert_to_email
+            message.set_content(text_body)
+            with smtplib.SMTP(settings.smtp_host, settings.smtp_port, timeout=20) as server:
+                server.starttls()
+                server.login(settings.smtp_username, settings.smtp_password)
+                server.send_message(message)
+        else:
+            raise RuntimeError(f"Unsupported email provider: {provider}")
     except Exception as exc:
-        raise HTTPException(status_code=502, detail="SMTP delivery failed") from exc
+        raise HTTPException(status_code=502, detail="Research scan email delivery failed") from exc
 
     return {"sent": True, "recipient": settings.alert_to_email, "symbols": symbols, "scan": result}
 
