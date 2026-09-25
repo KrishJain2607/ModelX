@@ -23,13 +23,17 @@ services:
       - key: UPSTOX_ANALYTICS_TOKEN
         sync: false
       - key: AI_PROVIDER
-        value: gemini
+        value: cerebras
+      - key: AI_FALLBACK_PROVIDER
+        value: ""
+      - key: CEREBRAS_API_KEY
+        sync: false
       - key: GEMINI_API_KEY
         sync: false
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gemini-3-flash-preview
+        value: gpt-oss-120b
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
