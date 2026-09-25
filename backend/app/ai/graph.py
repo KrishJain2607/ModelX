@@ -41,7 +41,7 @@ def _build_model(provider: str, model_name: str):
         return ChatGoogleGenerativeAI(
             google_api_key=api_key,
             model=selected_model,
-            temperature=0.1,
+            thinking_level="low",
         )
 
     raise RuntimeError(f"Unsupported AI provider: {provider}. ModelX is configured for Gemini only.")
