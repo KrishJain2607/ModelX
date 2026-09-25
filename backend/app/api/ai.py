@@ -6,6 +6,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
 
 from app.ai.graph import run_council
+from app.config.settings import settings
 from app.api.analysis import _analyze_token, _date_range, _require_auth, _upstox, _using_upstox
 
 router = APIRouter(prefix="/ai", tags=["ai-council"])
@@ -60,13 +61,13 @@ def council(request: CouncilRequest) -> dict[str, Any]:
             status_code = getattr(response, "status_code", None)
 
         if status_code == 401 or "authentication" in name.lower() or "api key" in lowered:
-            detail = "AI authentication failed (HTTP 401). Check GEMINI_API_KEY."
+            detail = "AI authentication failed (HTTP 401). Check the configured provider API key."
             http_status = 502
         elif status_code == 403 or "permission" in lowered or "forbidden" in lowered:
             detail = "AI provider denied access (HTTP 403). Check Gemini project/key permissions."
             http_status = 502
         elif status_code == 404 or "not found" in lowered or "modelnotfound" in name.lower():
-            detail = f"AI model was not found (HTTP 404). Check AI_MODEL. Provider: Gemini."
+            detail = f"AI model was not found (HTTP 404). Check AI_MODEL. Provider: the configured AI provider."
             http_status = 502
         elif status_code == 429 or "ratelimit" in name.lower() or "resource_exhausted" in lowered or "quota" in lowered:
             if "daily" in lowered or "requests per day" in lowered or "rpd" in lowered:
@@ -78,15 +79,15 @@ def council(request: CouncilRequest) -> dict[str, Any]:
             else:
                 reason = "rate/quota limit"
             detail = (
-                f"Gemini quota exceeded ({reason}; HTTP 429). "
-                "Check Google AI Studio → Dashboard → Usage/Rate limits."
+                f"AI provider quota exceeded ({reason}; HTTP 429). "
+                "Check the configured AI provider dashboard for usage/rate limits."
             )
             http_status = 429
         elif status_code == 400 or "badrequest" in name.lower() or "invalidrequest" in name.lower():
-            detail = "Gemini rejected the request (HTTP 400). Check model and structured-output compatibility."
+            detail = "AI provider rejected the request (HTTP 400). Check model and structured-output compatibility."
             http_status = 502
         elif status_code in {500, 502, 503, 504} or "service unavailable" in lowered:
-            detail = f"Gemini service temporarily unavailable (HTTP {status_code or '5xx'}). Retry later."
+            detail = f"AI provider service temporarily unavailable (HTTP {status_code or '5xx'}). Retry later."
             http_status = 503
         else:
             # Return the exception class, but not the raw message: provider errors
