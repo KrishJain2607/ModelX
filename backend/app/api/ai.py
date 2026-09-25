@@ -64,7 +64,7 @@ def council(request: CouncilRequest) -> dict[str, Any]:
             detail = "AI authentication failed (HTTP 401). Check the configured provider API key."
             http_status = 502
         elif status_code == 403 or "permission" in lowered or "forbidden" in lowered:
-            detail = "AI provider denied access (HTTP 403). Check Gemini project/key permissions."
+            detail = "AI provider denied access (HTTP 403). Check the configured provider project/key permissions."
             http_status = 502
         elif status_code == 404 or "not found" in lowered or "modelnotfound" in name.lower():
             detail = f"AI model was not found (HTTP 404). Check AI_MODEL. Provider: the configured AI provider."
