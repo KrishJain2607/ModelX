@@ -43,6 +43,15 @@ class Settings(BaseSettings):
     execution_gateway_secret: str = ""
     execution_gateway_timeout_seconds: int = 15
 
+    # Autonomous research scheduler / paper-trading controls.
+    automation_secret: str = ""
+    paper_trading_capital: float = 100000.0
+    automation_max_quote_universe: int = 40
+    automation_max_historical_candidates: int = 20
+    automation_max_ai_candidates: int = 3
+    automation_min_technical_score: int = 70
+    automation_min_final_rating: int = 70
+
     def approval_recipients(self) -> list[str]:
         return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]
 
