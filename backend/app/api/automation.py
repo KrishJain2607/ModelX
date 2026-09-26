@@ -3,14 +3,15 @@ from __future__ import annotations
 import gzip
 import json
 import logging
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 from typing import Any
 
 import httpx
 from fastapi import APIRouter, Header, HTTPException
 
 from app.ai.graph import run_council
-from app.api.analysis import _analyze_token, _risk_plan, _upstox, _using_upstox
+from app.api.analysis import _analyze_token, _paper_trades, _risk_plan, _upstox, _using_upstox
 from app.api.approvals import _approval_email, _send_html
 from app.approvals import create_approval
 from app.config.settings import settings
@@ -55,6 +56,31 @@ def _universe() -> list[dict[str, Any]]:
     return ranked[:settings.automation_max_quote_universe]
 
 
+IST = ZoneInfo("Asia/Kolkata")
+
+def _now_ist() -> datetime:
+    return datetime.now(IST)
+
+def _operating_window() -> tuple[bool, str]:
+    now = _now_ist()
+    if now.hour >= 22:
+        return False, "HARD_STOP_22_00_IST"
+    if now.hour < 9:
+        return False, "WAITING_FOR_09_00_IST"
+    return True, "ACTIVE"
+
+def _portfolio_state() -> tuple[float, int, float]:
+    open_trades = [t for t in _paper_trades.values() if t.get("status") == "OPEN"]
+    exposure = sum(float(t.get("entry_price", 0)) * int(t.get("quantity", 0)) for t in open_trades)
+    daily_loss = 0.0
+    today = _now_ist().date().isoformat()
+    for trade in _paper_trades.values():
+        if trade.get("status", "").startswith("CLOSED_") and str(trade.get("closed_at", "")).startswith(today):
+            pnl = float(trade.get("realized_pnl") or 0)
+            if pnl < 0:
+                daily_loss += abs(pnl)
+    return exposure, len(open_trades), daily_loss
+
 def _setup(technical: dict[str, Any]) -> tuple[float, float, float]:
     latest = technical.get("latest", {})
     entry = float(latest.get("close") or 0)
@@ -64,13 +90,20 @@ def _setup(technical: dict[str, Any]) -> tuple[float, float, float]:
     return entry, entry - 1.5 * atr, entry + 3 * atr
 
 
-def _approval(symbol: str, rating: int, technical: dict[str, Any], result: Any) -> dict[str, Any]:
+def _approval(symbol: str, rating: int, technical: dict[str, Any], result: Any, instrument_key: str) -> dict[str, Any]:
     entry, stop, target = _setup(technical)
-    plan = _risk_plan(entry, stop, target, settings.paper_trading_capital)
+    current_exposure, open_positions, daily_realized_loss = _portfolio_state()
+    plan = _risk_plan(
+        entry, stop, target, settings.paper_trading_capital,
+        current_exposure=current_exposure,
+        open_positions=open_positions,
+        daily_realized_loss=daily_realized_loss,
+    )
     if not plan["eligible_for_paper_trade"]:
         raise ValueError("Risk plan rejected candidate")
     trade = {
         "symbol": symbol,
+        "instrument_key": instrument_key,
         "rating": rating,
         "signal": result.council.decision,
         "market_regime": technical.get("market_regime", "UNKNOWN"),
@@ -91,6 +124,16 @@ def _approval(symbol: str, rating: int, technical: dict[str, Any], result: Any) 
 @router.post("/daily-scan")
 def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) -> dict[str, Any]:
     _auth(x_modelx_automation_secret)
+    active, window_status = _operating_window()
+    if not active:
+        return {
+            "status": "WAITING",
+            "mode": "PAPER",
+            "execution_enabled": False,
+            "window_status": window_status,
+            "ist_time": _now_ist().isoformat(),
+            "paper_trading_capital": settings.paper_trading_capital,
+        }
     if settings.live_trading_enabled:
         raise HTTPException(status_code=409, detail="LIVE_TRADING_ENABLED must remain false")
     if not _using_upstox():
@@ -138,13 +181,16 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
             )
             council_results.append(result.model_dump())
             if result.council.decision == "BUY_CANDIDATE" and result.final_rating >= settings.automation_min_final_rating:
-                approvals.append(_approval(symbol, int(result.final_rating), technical, result))
+                approvals.append(_approval(symbol, int(result.final_rating), technical, result, row["instrument_key"]))
         except Exception:
             logger.exception("[AUTO] council/approval failed for %s", symbol)
 
     return {
         "status": "OK",
         "mode": "PAPER",
+        "window_status": window_status,
+        "ist_time": _now_ist().isoformat(),
+        "paper_trading_capital": settings.paper_trading_capital,
         "execution_enabled": False,
         "date": today.isoformat(),
         "universe_ranked": len(universe),
@@ -155,6 +201,58 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         "council_results": council_results,
     }
 
+
+@router.post("/paper-monitor")
+def paper_monitor(x_modelx_automation_secret: str | None = Header(default=None)) -> dict[str, Any]:
+    _auth(x_modelx_automation_secret)
+    if settings.live_trading_enabled:
+        raise HTTPException(status_code=409, detail="Paper monitor requires LIVE_TRADING_ENABLED=false")
+    if not _using_upstox() or not settings.upstox_analytics_token:
+        raise HTTPException(status_code=503, detail="Upstox market data is required")
+
+    now = _now_ist()
+    open_trades = [t for t in _paper_trades.values() if t.get("status") == "OPEN"]
+    if not open_trades:
+        return {"status": "OK", "open_trades": 0, "closed_trades": 0, "ist_time": now.isoformat()}
+
+    keys = [str(t.get("instrument_key")) for t in open_trades if t.get("instrument_key")]
+    quotes = _upstox().full_market_quotes(keys)
+    closed = []
+    hard_stop = now.hour >= 22
+
+    for trade in open_trades:
+        quote = quotes.get(str(trade.get("instrument_key")), {})
+        try:
+            price = float(quote.get("last_price") or 0)
+        except (TypeError, ValueError):
+            price = 0
+        if price <= 0:
+            continue
+
+        reason = None
+        exit_price = None
+        if price <= float(trade["stop_loss"]):
+            reason, exit_price = "STOP_LOSS", float(trade["stop_loss"])
+        elif price >= float(trade["target_price"]):
+            reason, exit_price = "TARGET", float(trade["target_price"])
+        elif hard_stop:
+            reason, exit_price = "HARD_STOP_22_00_IST", price
+
+        if exit_price is not None:
+            trade["exit_price"] = exit_price
+            trade["realized_pnl"] = (exit_price - float(trade["entry_price"])) * int(trade["quantity"])
+            trade["status"] = f"CLOSED_{reason}"
+            trade["closed_at"] = now.isoformat()
+            closed.append({"trade_id": trade["trade_id"], "symbol": trade["symbol"], "reason": reason, "exit_price": exit_price, "realized_pnl": trade["realized_pnl"]})
+
+    return {
+        "status": "OK",
+        "ist_time": now.isoformat(),
+        "hard_stop_active": hard_stop,
+        "open_trades": sum(1 for t in _paper_trades.values() if t.get("status") == "OPEN"),
+        "closed_trades": len(closed),
+        "closed": closed,
+    }
 
 @router.get("/status")
 def status() -> dict[str, Any]:
