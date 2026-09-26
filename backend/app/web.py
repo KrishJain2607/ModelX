@@ -81,7 +81,7 @@ PAGE = """<!doctype html>
       <h1>ModelX</h1>
       <p>Research → risk plan → paper trade. Market data is read-only and live trading is hard-disabled.</p>
     </div>
-    <div class="badge">VERSION 0.5.3-SNAPSHOT · LIVE TRADING: OFF</div>
+    <div class="badge">VERSION 0.5.4-SNAPSHOT · LIVE TRADING: OFF</div>
   </section>
 
   <div class="grid">
@@ -257,6 +257,7 @@ async function loadAutomation(button){
       ['AI WATCH',last.council_watch??0],
       ['AI NO SIGNAL',last.council_no_signal??0],
       ['AI errors',last.council_errors??0],
+      ['Gemini rate limits',last.ai_rate_limits??0],
       ['Risk rejected',last.risk_rejections??0],
       ['Paper trades opened',last.paper_orders_opened??0],
       ['Insufficient history',last.skipped_insufficient_history??0],
@@ -275,7 +276,7 @@ async function loadAutomation(button){
     const decisions=last.decision_log||[];
     document.getElementById('autoDecisions').innerHTML=decisions.length
       ? decisions.slice().reverse().slice(0,10).map(d=>{
-          const cls=d.trade_eligible ? 'buy' : (d.decision==='WATCH' ? 'watch' : 'blocked');
+          const cls=d.trade_eligible ? 'buy' : (d.decision==='WATCH' ? 'watch' : (d.decision==='RATE LIMITED' ? 'watch' : 'blocked'));
           const rating=d.ai_rating===null||d.ai_rating===undefined ? 'AI failed' : ('AI '+d.ai_rating+'/100');
           const tradeText=d.trade_eligible ? 'PAPER TRADE ELIGIBLE' : 'NOT TRADED';
           return '<div class="decision '+cls+'"><strong>'+d.symbol+'</strong> · Technical '+d.technical_score+'/100 · '+rating+' · <strong>'+d.decision+'</strong><br><span class="muted">'+tradeText+' — '+d.reason+'</span></div>';

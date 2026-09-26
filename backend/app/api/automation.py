@@ -3,6 +3,8 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+import time
+from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -24,7 +26,10 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 _last_scan: dict[str, Any] = {"status": "NOT_RUN", "candidates": [], "approvals": []}
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 WEEKEND_SCAN_STATE_PATH = Path("data/modelx_weekend_scan_state.json")
-WEEKEND_SCAN_STATE_VERSION = "0.5.3"
+WEEKEND_SCAN_STATE_VERSION = "0.5.4"
+AI_CALL_LOCK = Lock()
+AI_LAST_CALL_AT = 0.0
+AI_MIN_INTERVAL_SECONDS = 2.0
 
 
 def _auth(value: str | None) -> None:
@@ -168,6 +173,7 @@ def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict
         "council_watch": 0,
         "council_no_signal": 0,
         "council_errors": 0,
+        "ai_rate_limits": 0,
         "risk_rejections": 0,
         "paper_trade_rejections": 0,
         "decision_log": [],
@@ -245,6 +251,51 @@ def _merge_top_candidates(
 
 
 
+def _is_ai_rate_limit_error(exc: Exception) -> bool:
+    name = type(exc).__name__.lower()
+    text = str(exc).lower()
+    return (
+        "ratelimit" in name
+        or "rate limit" in text
+        or "resource exhausted" in text
+        or "too many requests" in text
+        or "429" in text
+    )
+
+
+def _invoke_council_with_retry(*, symbol: str, technical: dict[str, Any], row: dict[str, Any], news: dict[str, list[dict[str, Any]]], result_runner):
+    """Run one AI council with throttling and bounded 429 retries.
+
+    Gemini rate limits are project-level. Weekend scans intentionally serialize
+    council calls and add a small spacing between requests so one batch does not
+    burst all three council stages together.
+    """
+    global AI_LAST_CALL_AT
+    delays = (0.0, 8.0, 20.0, 40.0)
+    last_exc: Exception | None = None
+    for attempt, delay in enumerate(delays, start=1):
+        if delay:
+            time.sleep(delay)
+        with AI_CALL_LOCK:
+            wait = AI_MIN_INTERVAL_SECONDS - (time.monotonic() - AI_LAST_CALL_AT)
+            if wait > 0:
+                time.sleep(wait)
+            AI_LAST_CALL_AT = time.monotonic()
+        try:
+            return result_runner()
+        except Exception as exc:
+            last_exc = exc
+            if not _is_ai_rate_limit_error(exc) or attempt == len(delays):
+                raise
+            logger.warning(
+                "[AUTO] Gemini rate limit for %s; retrying attempt %s/%s after backoff",
+                symbol,
+                attempt + 1,
+                len(delays),
+            )
+    raise last_exc or RuntimeError("AI council failed")
+
+
 def _run_weekend_council(
     state: dict[str, Any],
     min_final_rating: int,
@@ -265,18 +316,24 @@ def _run_weekend_council(
         symbol = row["trading_symbol"].upper()
         technical = row["technical"]
         try:
-            result = run_council(
+            result = _invoke_council_with_retry(
                 symbol=symbol,
-                technical_input=technical,
-                trend_input={
-                    "market_regime": technical.get("market_regime"),
-                    "regime_reasons": technical.get("regime_reasons", []),
-                    "components": technical.get("components", {}),
-                    "latest": technical.get("latest", {}),
-                },
-                deterministic_score=int(technical["score"]),
-                news_input=news.get(row["instrument_key"], []),
-                sentiment_input={},
+                technical=technical,
+                row=row,
+                news=news,
+                result_runner=lambda: run_council(
+                    symbol=symbol,
+                    technical_input=technical,
+                    trend_input={
+                        "market_regime": technical.get("market_regime"),
+                        "regime_reasons": technical.get("regime_reasons", []),
+                        "components": technical.get("components", {}),
+                        "latest": technical.get("latest", {}),
+                    },
+                    deterministic_score=int(technical["score"]),
+                    news_input=news.get(row["instrument_key"], []),
+                    sentiment_input={},
+                ),
             )
             council_results.append(result.model_dump())
             processed_symbols.add(symbol)
@@ -396,13 +453,19 @@ def _run_weekend_council(
                 state["decision_log"][-1]["reason"] = "Approval email created"
         except Exception as exc:
             state["council_errors"] = int(state.get("council_errors", 0)) + 1
+            rate_limited = _is_ai_rate_limit_error(exc)
+            if rate_limited:
+                state["ai_rate_limits"] = int(state.get("ai_rate_limits", 0)) + 1
+                reason = "Gemini rate limit reached; ModelX will retry this stock on the next cycle"
+            else:
+                reason = "AI Council processing failed: " + type(exc).__name__
             state.setdefault("decision_log", []).append({
                 "symbol": symbol,
                 "technical_score": int(technical.get("score", 0)),
                 "ai_rating": None,
-                "decision": "ERROR",
+                "decision": "RATE LIMITED" if rate_limited else "ERROR",
                 "trade_eligible": False,
-                "reason": "AI Council processing failed: " + type(exc).__name__,
+                "reason": reason,
             })
             state["decision_log"] = state["decision_log"][-50:]
             logger.exception("[AUTO] council/approval failed for %s", symbol)
@@ -529,6 +592,7 @@ def _build_weekend_scan_result(
         "council_watch": int(state.get("council_watch", 0)),
         "council_no_signal": int(state.get("council_no_signal", 0)),
         "council_errors": int(state.get("council_errors", 0)),
+        "ai_rate_limits": int(state.get("ai_rate_limits", 0)),
         "risk_rejections": int(state.get("risk_rejections", 0)),
         "paper_trade_rejections": int(state.get("paper_trade_rejections", 0)),
         "decision_log": state.get("decision_log", [])[-20:],
