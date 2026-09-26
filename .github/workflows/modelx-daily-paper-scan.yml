@@ -1,19 +1,23 @@
-name: ModelX Daily Paper Scan
+name: ModelX Automated Paper Loop
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: "15 10 * * 1-5"
-      timezone: "Asia/Kolkata"
+    - cron: "*/30 * * * *"
 
 permissions:
   contents: read
 
+concurrency:
+  group: modelx-paper-loop
+  cancel-in-progress: false
+
 jobs:
-  daily-scan:
+  paper-loop:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
-      - name: Trigger ModelX
+      - name: Wake Render and run ModelX paper cycle
         env:
           MODELX_URL: https://modelx-poc.onrender.com
           MODELX_AUTOMATION_SECRET: ${{ secrets.MODELX_AUTOMATION_SECRET }}
@@ -21,6 +25,8 @@ jobs:
           set -euo pipefail
           test -n "$MODELX_AUTOMATION_SECRET"
           curl --fail-with-body --show-error --silent \
+            --retry 12 --retry-delay 20 --retry-max-time 600 \
+            --connect-timeout 20 --max-time 1200 \
             --request POST \
             --header "X-ModelX-Automation-Secret: $MODELX_AUTOMATION_SECRET" \
             "$MODELX_URL/api/automation/daily-scan"
