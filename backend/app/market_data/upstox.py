@@ -88,3 +88,42 @@ class UpstoxMarketDataClient:
             }
             for candle in candles
         ]
+
+
+    def full_market_quotes(self, instrument_keys: list[str]) -> dict[str, dict[str, Any]]:
+        """Return full market snapshots for up to 500 instruments per request."""
+        if not instrument_keys:
+            return {}
+        results: dict[str, dict[str, Any]] = {}
+        for start in range(0, len(instrument_keys), 500):
+            batch = instrument_keys[start:start + 500]
+            payload = self._get(
+                "/v2/market-quote/quotes",
+                params={"instrument_key": ",".join(batch)},
+            )
+            data = payload.get("data", {})
+            if isinstance(data, dict):
+                results.update(data)
+        return results
+
+    def news(self, instrument_keys: list[str], page_size: int = 20) -> dict[str, list[dict[str, Any]]]:
+        """Fetch recent news for up to 30 instrument keys."""
+        if not instrument_keys:
+            return {}
+        results: dict[str, list[dict[str, Any]]] = {}
+        for start in range(0, len(instrument_keys), 30):
+            batch = instrument_keys[start:start + 30]
+            payload = self._get(
+                "/v2/news",
+                params={
+                    "category": "instrument_keys",
+                    "instrument_keys": ",".join(batch),
+                    "page_number": 1,
+                    "page_size": page_size,
+                },
+            )
+            data = payload.get("data", {})
+            if isinstance(data, dict):
+                for key, items in data.items():
+                    results[key] = items if isinstance(items, list) else []
+        return results
