@@ -161,7 +161,6 @@ PAGE = """<!doctype html>
       </div>
       <div id="automationStatus" class="action-status">Loading autonomous status…</div>
       <button class="secondary" onclick="loadAutomation(this)">Refresh autonomous status</button>
-      <button onclick="runAutomationNow(this)">Run autonomous cycle now</button>
       <pre id="automationRaw">No autonomous scan run yet.</pre>
     </section>
 
@@ -247,22 +246,6 @@ async function loadAutomation(button){
     setStatus('automationStatus',e.message||'Automation status failed','error');
   }finally{if(button)setBusy(button,false);}
 }
-async function runAutomationNow(button){
-  setBusy(button,true,'Running…');
-  setStatus('automationStatus','Running autonomous scan — this can take a few minutes.');
-  try{
-    const secretHeader=''; 
-    const {r,data}=await getJson('/api/automation/daily-scan',{method:'POST'});
-    show('automationRaw',data);
-    if(!r.ok) throw new Error(data.detail||'Autonomous scan failed');
-    await loadAutomation();
-    toast(data.approvals_sent ? 'Autonomous scan completed — approval email sent' : 'Autonomous scan completed — no approval qualified',data.approvals_sent?'success':'success');
-  }catch(e){
-    setStatus('automationStatus',e.message||'Autonomous scan failed','error');
-    toast(e.message||'Autonomous scan failed','error');
-  }finally{setBusy(button,false);}
-}
-
 async function loadHealth(button) {
   setBusy(button,true,'Checking…'); setStatus('healthStatus','Checking system health…');
   try {
