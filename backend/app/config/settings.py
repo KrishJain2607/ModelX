@@ -56,6 +56,9 @@ class Settings(BaseSettings):
     automation_weekend_test_mode: bool = True
     automation_weekend_auto_approve: bool = True
     automation_weekend_symbols: str = "RELIANCE,HDFCBANK,ICICIBANK,INFY,TCS,SBIN,LT,AXISBANK,KOTAKBANK,BHARTIARTL,ITC,HINDUNILVR,MARUTI,M&M,SUNPHARMA,BAJFINANCE,ADANIENT,NTPC,POWERGRID,ONGC,TATASTEEL,TATAMOTORS,ULTRACEMCO,WIPRO,HCLTECH,TECHM,ASIANPAINT,TITAN,JSWSTEEL,COALINDIA"
+    # Lower thresholds are isolated to weekend testing; normal automation remains at 70.
+    automation_weekend_min_technical_score: int = 40
+    automation_weekend_min_final_rating: int = 40
 
     def approval_recipients(self) -> list[str]:
         return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]
