@@ -51,6 +51,11 @@ class Settings(BaseSettings):
     automation_max_ai_candidates: int = 3
     automation_min_technical_score: int = 70
     automation_min_final_rating: int = 70
+    # Weekend paper-test mode uses the latest completed daily candle instead of live quotes.
+    # It is paper-only and must never enable live broker execution.
+    automation_weekend_test_mode: bool = True
+    automation_weekend_auto_approve: bool = True
+    automation_weekend_symbols: str = "RELIANCE,HDFCBANK,ICICIBANK,INFY,TCS,SBIN,LT,AXISBANK,KOTAKBANK,BHARTIARTL,ITC,HINDUNILVR,MARUTI,M&M,SUNPHARMA,BAJFINANCE,ADANIENT,NTPC,POWERGRID,ONGC,TATASTEEL,TATAMOTORS,ULTRACEMCO,WIPRO,HCLTECH,TECHM,ASIANPAINT,TITAN,JSWSTEEL,COALINDIA"
 
     def approval_recipients(self) -> list[str]:
         return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]
