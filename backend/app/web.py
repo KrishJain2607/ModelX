@@ -146,6 +146,26 @@ PAGE = """<!doctype html>
     </section>
 
     <section class="card wide">
+      <h2>Autonomous paper trading</h2>
+      <p class="muted">Live view of the 30-minute autonomous loop. The dashboard reads the latest in-process state; paper trades remain disabled for live execution.</p>
+      <div class="metrics" id="autoMetrics"></div>
+      <div class="row">
+        <div>
+          <div class="muted">Latest candidates</div>
+          <div id="autoCandidates" class="results"></div>
+        </div>
+        <div>
+          <div class="muted">Open paper trades</div>
+          <div id="autoTrades" class="results"></div>
+        </div>
+      </div>
+      <div id="automationStatus" class="action-status">Loading autonomous status…</div>
+      <button class="secondary" onclick="loadAutomation(this)">Refresh autonomous status</button>
+      <button onclick="runAutomationNow(this)">Run autonomous cycle now</button>
+      <pre id="automationRaw">No autonomous scan run yet.</pre>
+    </section>
+
+    <section class="card wide">
       <h2>What this stage does</h2>
       <div class="metrics">
         <div class="metric">Market data<b>Read-only</b></div>
@@ -192,6 +212,57 @@ function toast(message, type='success') {
   clearTimeout(window.modelXToastTimer);
   window.modelXToastTimer=setTimeout(()=>el.className='toast',2600);
 }
+async function loadAutomation(button){
+  if(button)setBusy(button,true,'Refreshing…');
+  try{
+    const {r,data}=await getJson('/api/automation/status');
+    if(!r.ok) throw new Error(data.detail||'Automation status failed');
+    const last=data.last_scan||{};
+    const active=data.enabled && !data.live_trading_enabled;
+    document.getElementById('autoMetrics').innerHTML=[
+      ['Mode',data.mode||'PAPER'],
+      ['Status',active?'READY':'CHECK CONFIG'],
+      ['Capital','₹'+Number(data.paper_trading_capital||0).toLocaleString('en-IN')],
+      ['Universe',last.universe_ranked??'—'],
+      ['Technical candidates',last.technical_candidates??'—'],
+      ['AI Council',last.ai_candidates??'—'],
+      ['Approval emails',last.approvals_sent??'—'],
+      ['Open trades',data.open_paper_trades??0]
+    ].map(x=>'<div class="metric">'+x[0]+'<b>'+String(x[1])+'</b></div>').join('');
+    document.getElementById('automationStatus').textContent=last.status==='OK'
+      ? 'Last cycle: '+(last.ist_time||'—')+' · next scheduled run is approximately every 30 minutes.'
+      : 'No completed autonomous cycle in this process yet.';
+    document.getElementById('automationStatus').className='action-status '+(last.status==='OK'?'success':'active');
+    const candidates=last.top_technical||[];
+    document.getElementById('autoCandidates').innerHTML=candidates.length
+      ? candidates.slice(0,10).map(x=>'<div class="result"><strong>'+x.symbol+'</strong><span class="pill">'+x.technical_score+'/100</span><br><span class="muted">'+x.signal+' · '+x.market_regime+'</span></div>').join('')
+      : '<div class="muted">No qualifying technical candidates in the latest cycle.</div>';
+    const {data:trades}=await getJson('/api/analysis/paper-trades');
+    const open=(trades.trades||[]).filter(t=>t.status==='OPEN');
+    document.getElementById('autoTrades').innerHTML=open.length
+      ? open.map(t=>'<div class="result"><strong>'+t.symbol+'</strong><span class="pill">OPEN</span><br><span class="muted">Qty '+t.quantity+' · Entry ₹'+t.entry_price+' · SL ₹'+t.stop_loss+' · Target ₹'+t.target_price+'</span></div>').join('')
+      : '<div class="muted">No open paper trades.</div>';
+    show('automationRaw',data);
+  }catch(e){
+    setStatus('automationStatus',e.message||'Automation status failed','error');
+  }finally{if(button)setBusy(button,false);}
+}
+async function runAutomationNow(button){
+  setBusy(button,true,'Running…');
+  setStatus('automationStatus','Running autonomous scan — this can take a few minutes.');
+  try{
+    const secretHeader=''; 
+    const {r,data}=await getJson('/api/automation/daily-scan',{method:'POST'});
+    show('automationRaw',data);
+    if(!r.ok) throw new Error(data.detail||'Autonomous scan failed');
+    await loadAutomation();
+    toast(data.approvals_sent ? 'Autonomous scan completed — approval email sent' : 'Autonomous scan completed — no approval qualified',data.approvals_sent?'success':'success');
+  }catch(e){
+    setStatus('automationStatus',e.message||'Autonomous scan failed','error');
+    toast(e.message||'Autonomous scan failed','error');
+  }finally{setBusy(button,false);}
+}
+
 async function loadHealth(button) {
   setBusy(button,true,'Checking…'); setStatus('healthStatus','Checking system health…');
   try {
@@ -379,6 +450,8 @@ async function emailScan(button){
 }
 loadHealth();
 loadPaperTrades();
+loadAutomation();
+setInterval(loadAutomation, 30000);
 </script>
 </body>
 </html>
