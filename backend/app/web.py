@@ -226,10 +226,12 @@ async function loadAutomation(button){
       ['Technical candidates',last.technical_candidates??'—'],
       ['AI Council',last.ai_candidates??'—'],
       ['Approval emails',last.approvals_sent??'—'],
-      ['Open trades',data.open_paper_trades??0]
+      ['Paper orders',last.paper_orders_opened??0],
+      ['Open trades',data.open_paper_trades??0],
+      ['Weekend test',data.weekend_test_mode?'ON':'OFF']
     ].map(x=>'<div class="metric">'+x[0]+'<b>'+String(x[1])+'</b></div>').join('');
     document.getElementById('automationStatus').textContent=last.status==='OK'
-      ? 'Last cycle: '+(last.ist_time||'—')+' · next scheduled run is approximately every 30 minutes.'
+      ? 'Last cycle: '+(last.ist_time||'—')+' · '+(last.window_status||'')+' · next scheduled run is approximately every 30 minutes.'
       : 'No completed autonomous cycle in this process yet.';
     document.getElementById('automationStatus').className='action-status '+(last.status==='OK'?'success':'active');
     const candidates=last.top_technical||[];
