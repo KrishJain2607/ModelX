@@ -2,6 +2,14 @@
 
 Personal research and execution platform for Indian equity trading.
 
+## Deployment versioning
+
+ModelX uses semantic-style deployment versions:
+
+- Snapshot/test deployment: `X.Y.Z-SNAPSHOT` (for example `0.5.1-SNAPSHOT`)
+- Stable deployment: `X.Y.Z` (for example `3.0.0`)
+- The running version is exposed by `/health`, FastAPI `/docs`, and the web UI.
+
 ## Current stage
 
 **V0 POC / development only.** ModelX is hosted as a read-only web application, connects to Kite for market data, and calculates deterministic technical signals in memory. No database and no live trading are used in this iteration.
@@ -29,6 +37,10 @@ Kite authentication -> market data -> indicators -> deterministic strategy score
 - Backtesting, paper trading and compliance gates precede live trading.
 - Every proposed and executed order must eventually be auditable.
 - Broker/exchange/SEBI requirements are treated as design constraints from day one.
+
+## Weekend test mode
+
+Weekend test mode is paper-only. It scans the complete eligible NSE equity universe using historical daily candles, applies an isolated lower test threshold, and may auto-open paper trades. It never enables live broker execution.
 
 ## Next iterations
 

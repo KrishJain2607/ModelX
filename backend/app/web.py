@@ -69,7 +69,7 @@ PAGE = """<!doctype html>
       <h1>ModelX</h1>
       <p>Research → risk plan → paper trade. Market data is read-only and live trading is hard-disabled.</p>
     </div>
-    <div class="badge">LIVE TRADING: OFF</div>
+    <div class="badge">VERSION 0.5.1-SNAPSHOT · LIVE TRADING: OFF</div>
   </section>
 
   <div class="grid">

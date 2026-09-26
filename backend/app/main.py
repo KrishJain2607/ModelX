@@ -10,7 +10,7 @@ from app.api.market import router as market_router
 from app.config.settings import settings
 from app.web import page
 
-app = FastAPI(title="ModelX", version="0.5.0")
+app = FastAPI(title="ModelX", version=settings.modelx_version)
 app.include_router(broker_router, prefix="/api")
 app.include_router(ai_router, prefix="/api")
 app.include_router(automation_router, prefix="/api")
@@ -28,6 +28,7 @@ def home():
 def health() -> dict[str, object]:
     return {
         "status": "ok",
+        "version": settings.modelx_version,
         "environment": settings.app_env,
         "live_trading_enabled": settings.live_trading_enabled,
         "broker_access_configured": bool(settings.broker_access_token),

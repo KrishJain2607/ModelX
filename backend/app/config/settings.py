@@ -2,6 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    modelx_version: str = "0.5.1-SNAPSHOT"
     app_env: str = "development"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
@@ -55,7 +56,7 @@ class Settings(BaseSettings):
     # It is paper-only and must never enable live broker execution.
     automation_weekend_test_mode: bool = True
     automation_weekend_auto_approve: bool = True
-    automation_weekend_symbols: str = "RELIANCE,HDFCBANK,ICICIBANK,INFY,TCS,SBIN,LT,AXISBANK,KOTAKBANK,BHARTIARTL,ITC,HINDUNILVR,MARUTI,M&M,SUNPHARMA,BAJFINANCE,ADANIENT,NTPC,POWERGRID,ONGC,TATASTEEL,TATAMOTORS,ULTRACEMCO,WIPRO,HCLTECH,TECHM,ASIANPAINT,TITAN,JSWSTEEL,COALINDIA"
+    automation_weekend_scan_workers: int = 4
     # Lower thresholds are isolated to weekend testing; normal automation remains at 70.
     automation_weekend_min_technical_score: int = 40
     automation_weekend_min_final_rating: int = 40

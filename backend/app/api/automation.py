@@ -3,6 +3,7 @@ from __future__ import annotations
 import gzip
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -43,18 +44,8 @@ def _universe() -> list[dict[str, Any]]:
         and r.get("instrument_key")
         and r.get("trading_symbol")
     ]
-    # NSE cash equities do not trade on normal Saturdays/Sundays. In weekend
-    # test mode we deliberately use a small, liquid test universe and the latest
-    # completed daily candle, so the research/paper pipeline can be exercised
-    # without pretending that a live market quote exists.
     if _now_ist().weekday() >= 5 and settings.automation_weekend_test_mode:
-        wanted = {
-            symbol.strip().upper()
-            for symbol in settings.automation_weekend_symbols.split(",")
-            if symbol.strip()
-        }
-        weekend_rows = [r for r in rows if str(r.get("trading_symbol", "")).upper() in wanted]
-        return weekend_rows[:settings.automation_max_quote_universe]
+        return rows
 
     quotes = _upstox().full_market_quotes([r["instrument_key"] for r in rows])
     ranked = []
@@ -215,13 +206,27 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         if window_status == "WEEKEND_TEST"
         else settings.automation_min_final_rating
     )
-    for row in universe:
+    def scan_row(row: dict[str, Any]) -> dict[str, Any] | None:
         try:
             technical = _analyze_token(row["instrument_key"], start, today.isoformat(), "day")
-            if technical.get("signal") == "BUY_CANDIDATE" and int(technical.get("score", 0)) >= min_technical_score:
-                technical_candidates.append({**row, "technical": technical})
+            score = int(technical.get("score", 0))
+            signal = technical.get("signal")
+            eligible = score >= min_technical_score and (
+                window_status == "WEEKEND_TEST" or signal == "BUY_CANDIDATE"
+            )
+            if eligible:
+                return {**row, "technical": technical}
         except Exception:
             logger.exception("[AUTO] technical scan failed for %s", row["trading_symbol"])
+        return None
+
+    max_workers = settings.automation_weekend_scan_workers if window_status == "WEEKEND_TEST" else 1
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = [executor.submit(scan_row, row) for row in universe]
+        for future in as_completed(futures):
+            result = future.result()
+            if result is not None:
+                technical_candidates.append(result)
 
     technical_candidates.sort(key=lambda r: int(r["technical"].get("score", 0)), reverse=True)
     technical_candidates = technical_candidates[:settings.automation_max_historical_candidates]
@@ -297,6 +302,7 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         "execution_enabled": False,
         "date": today.isoformat(),
         "universe_ranked": len(universe),
+        "universe_scope": "FULL_NSE_EQ_NORMAL" if window_status == "WEEKEND_TEST" else "LIQUIDITY_RANKED",
         "technical_candidates": len(technical_candidates),
         "ai_candidates": len(council_results),
         "approvals_sent": len(approvals),
