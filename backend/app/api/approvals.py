@@ -89,8 +89,14 @@ def _approval_email(token: str, trade: dict) -> tuple[str, str, str]:
     rr = float(trade["risk_reward"])
     risk = float(trade["capital_at_risk"])
 
-    approve_link = f'<a href="{_base_url()}/api/approvals/{token}/action?decision=approve" style="display:inline-block;padding:14px 28px;background:#16803c;color:#fff;text-decoration:none;border-radius:10px;font-weight:800;margin:4px;">APPROVE</a>'
-    reject_link = f'<a href="{_base_url()}/api/approvals/{token}/action?decision=reject" style="display:inline-block;padding:14px 28px;background:#a61b2b;color:#fff;text-decoration:none;border-radius:10px;font-weight:800;margin:4px;">REJECT</a>'
+    approve_links = "".join(
+        f'<a href="{_base_url()}/api/approvals/{token}/action?decision=approve&recipient={quote(recipient)}" style="display:inline-block;padding:14px 28px;background:#16803c;color:#fff;text-decoration:none;border-radius:10px;font-weight:800;margin:4px;">APPROVE ({html.escape(recipient)})</a>'
+        for recipient in recipients
+    )
+    reject_links = "".join(
+        f'<a href="{_base_url()}/api/approvals/{token}/action?decision=reject&recipient={quote(recipient)}" style="display:inline-block;padding:14px 28px;background:#a61b2b;color:#fff;text-decoration:none;border-radius:10px;font-weight:800;margin:4px;">REJECT ({html.escape(recipient)})</a>'
+        for recipient in recipients
+    )
 
     subject = f"ModelX trade approval — {symbol} — Rating {rating}/100"
     body = f"""ModelX trade approval
