@@ -3,7 +3,7 @@ name: ModelX Daily Paper Scan
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 10 * * 1-5"
+    - cron: "15 10 * * 1-5"
       timezone: "Asia/Kolkata"
 
 permissions:
