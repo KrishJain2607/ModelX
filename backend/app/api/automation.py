@@ -18,6 +18,7 @@ from app.config.settings import settings
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/automation", tags=["automation"])
+_last_scan: dict[str, Any] = {"status": "NOT_RUN", "candidates": [], "approvals": []}
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 
 
@@ -185,7 +186,8 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         except Exception:
             logger.exception("[AUTO] council/approval failed for %s", symbol)
 
-    return {
+    global _last_scan
+    _last_scan = {
         "status": "OK",
         "mode": "PAPER",
         "window_status": window_status,
@@ -199,7 +201,17 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         "approvals_sent": len(approvals),
         "approvals": approvals,
         "council_results": council_results,
+        "top_technical": [
+            {
+                "symbol": row["trading_symbol"],
+                "technical_score": int(row["technical"].get("score", 0)),
+                "signal": row["technical"].get("signal"),
+                "market_regime": row["technical"].get("market_regime"),
+            }
+            for row in technical_candidates
+        ],
     }
+    return _last_scan
 
 
 @router.post("/paper-monitor")
@@ -263,4 +275,8 @@ def status() -> dict[str, Any]:
         "max_ai_candidates": settings.automation_max_ai_candidates,
         "min_technical_score": settings.automation_min_technical_score,
         "min_final_rating": settings.automation_min_final_rating,
+        "paper_trading_capital": settings.paper_trading_capital,
+        "last_scan": _last_scan,
+        "open_paper_trades": sum(1 for t in _paper_trades.values() if t.get("status") == "OPEN"),
+        "closed_paper_trades": sum(1 for t in _paper_trades.values() if str(t.get("status", "")).startswith("CLOSED_")),
     }
