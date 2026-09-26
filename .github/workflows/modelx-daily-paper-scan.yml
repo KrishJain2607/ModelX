@@ -1,0 +1,26 @@
+name: ModelX Daily Paper Scan
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 10 * * 1-5"
+      timezone: "Asia/Kolkata"
+
+permissions:
+  contents: read
+
+jobs:
+  daily-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger ModelX
+        env:
+          MODELX_URL: https://modelx-poc.onrender.com
+          MODELX_AUTOMATION_SECRET: ${{ secrets.MODELX_AUTOMATION_SECRET }}
+        run: |
+          set -euo pipefail
+          test -n "$MODELX_AUTOMATION_SECRET"
+          curl --fail-with-body --show-error --silent \
+            --request POST \
+            --header "X-ModelX-Automation-Secret: $MODELX_AUTOMATION_SECRET" \
+            "$MODELX_URL/api/automation/daily-scan"
