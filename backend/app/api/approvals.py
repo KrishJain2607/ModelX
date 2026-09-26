@@ -135,8 +135,8 @@ box-shadow:0 8px 30px rgba(20,35,60,.12);">
   <div style="padding:15px;border-left:4px solid #e1a900;background:#fffaf0;border-radius:8px;">
     <b>Important:</b> Approval authorises the configured ModelX execution path. Review the values above before clicking.
   </div>
-  <div style="text-align:center;margin:24px 0 10px;">{approve_link}</div>
-  <div style="text-align:center;">{reject_link}</div>
+  <div style="text-align:center;margin:24px 0 10px;">{approve_links}</div>
+  <div style="text-align:center;">{reject_links}</div>
   <p style="font-size:12px;color:#7b8496;text-align:center;margin-top:24px;">
     Either authorised recipient's APPROVE action is sufficient. Approval links expire automatically.
   </p>
