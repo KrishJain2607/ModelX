@@ -233,8 +233,17 @@ async function loadAutomation(button){
       : 'No completed autonomous cycle in this process yet.';
     document.getElementById('automationStatus').className='action-status '+(last.status==='OK'?'success':'active');
     const candidates=last.top_technical||[];
+    const aiBySymbol={};
+    (last.council_results||[]).forEach(x=>{
+      const symbol=x.symbol||x.stock_symbol||x.ticker;
+      if(symbol) aiBySymbol[String(symbol).toUpperCase()]=x;
+    });
     document.getElementById('autoCandidates').innerHTML=candidates.length
-      ? candidates.slice(0,10).map(x=>'<div class="result"><strong>'+x.symbol+'</strong><span class="pill">'+x.technical_score+'/100</span><br><span class="muted">'+x.signal+' · '+x.market_regime+'</span></div>').join('')
+      ? candidates.slice(0,10).map(x=>{
+          const ai=aiBySymbol[String(x.symbol).toUpperCase()];
+          const aiText=ai ? ' · AI '+(ai.final_rating??'—')+'/100 · '+(ai.council?.decision||'') : ' · AI not run';
+          return '<div class="result"><strong>'+x.symbol+'</strong><span class="pill">'+x.technical_score+'/100</span><br><span class="muted">'+x.signal+' · '+x.market_regime+aiText+'</span></div>';
+        }).join('')
       : '<div class="muted">No qualifying technical candidates in the latest cycle.</div>';
     const {data:trades}=await getJson('/api/analysis/paper-trades');
     const open=(trades.trades||[]).filter(t=>t.status==='OPEN');
