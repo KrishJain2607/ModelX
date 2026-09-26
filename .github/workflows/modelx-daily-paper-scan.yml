@@ -29,4 +29,11 @@ jobs:
             --connect-timeout 20 --max-time 1200 \
             --request POST \
             --header "X-ModelX-Automation-Secret: $MODELX_AUTOMATION_SECRET" \
+            "$MODELX_URL/api/automation/paper-monitor"
+
+          curl --fail-with-body --show-error --silent \
+            --retry 12 --retry-delay 20 --retry-max-time 600 \
+            --connect-timeout 20 --max-time 1200 \
+            --request POST \
+            --header "X-ModelX-Automation-Secret: $MODELX_AUTOMATION_SECRET" \
             "$MODELX_URL/api/automation/daily-scan"
