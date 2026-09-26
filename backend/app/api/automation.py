@@ -205,10 +205,20 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
     start = (today - timedelta(days=365)).isoformat()
     universe = _universe()
     technical_candidates = []
+    min_technical_score = (
+        settings.automation_weekend_min_technical_score
+        if window_status == "WEEKEND_TEST"
+        else settings.automation_min_technical_score
+    )
+    min_final_rating = (
+        settings.automation_weekend_min_final_rating
+        if window_status == "WEEKEND_TEST"
+        else settings.automation_min_final_rating
+    )
     for row in universe:
         try:
             technical = _analyze_token(row["instrument_key"], start, today.isoformat(), "day")
-            if technical.get("signal") == "BUY_CANDIDATE" and int(technical.get("score", 0)) >= settings.automation_min_technical_score:
+            if technical.get("signal") == "BUY_CANDIDATE" and int(technical.get("score", 0)) >= min_technical_score:
                 technical_candidates.append({**row, "technical": technical})
         except Exception:
             logger.exception("[AUTO] technical scan failed for %s", row["trading_symbol"])
@@ -239,7 +249,7 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
                 sentiment_input={},
             )
             council_results.append(result.model_dump())
-            if result.council.decision == "BUY_CANDIDATE" and result.final_rating >= settings.automation_min_final_rating:
+            if result.council.decision == "BUY_CANDIDATE" and result.final_rating >= min_final_rating:
                 if (
                     window_status == "WEEKEND_TEST"
                     and settings.automation_weekend_auto_approve
@@ -295,6 +305,8 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         "paper_orders": paper_orders,
         "weekend_test_mode": settings.automation_weekend_test_mode,
         "weekend_auto_approve": settings.automation_weekend_auto_approve,
+        "min_technical_score_used": min_technical_score,
+        "min_final_rating_used": min_final_rating,
         "council_results": council_results,
         "top_technical": [
             {
