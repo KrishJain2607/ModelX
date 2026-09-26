@@ -6,7 +6,7 @@ Personal research and execution platform for Indian equity trading.
 
 ModelX uses semantic-style deployment versions:
 
-- Snapshot/test deployment: `X.Y.Z-SNAPSHOT` (for example `0.5.2-SNAPSHOT`)
+- Snapshot/test deployment: `X.Y.Z-SNAPSHOT` (for example `0.5.3-SNAPSHOT`)
 - Stable deployment: `X.Y.Z` (for example `3.0.0`)
 - The running version is exposed by `/health`, FastAPI `/docs`, and the web UI.
 
@@ -40,7 +40,7 @@ Kite authentication -> market data -> indicators -> deterministic strategy score
 
 ## Weekend test mode
 
-Weekend test mode is paper-only. It scans the complete eligible NSE equity universe using historical daily candles, applies an isolated lower test threshold, and may auto-open paper trades. It never enables live broker execution.
+Weekend test mode is paper-only. It scans the complete eligible NSE equity universe using historical daily candles, applies isolated test thresholds, and may auto-open paper trades. A BUY_CANDIDATE can pass the weekend rating gate; additionally, a WATCH can be promoted only for weekend paper testing when both the AI final rating and deterministic technical score are at least 70/100. This WATCH promotion is test-only and never changes normal automation. It never enables live broker execution.
 
 Weekend scanning is resumable in bounded batches (default 100 symbols per cycle). Each cycle persists its scan cursor and top technical candidates to the Render instance so a single HTTP request never attempts the full universe. Insufficient-history symbols are counted as normal data-quality skips instead of producing traceback noise. The current POC persistence is instance-local; durable PostgreSQL storage remains a later phase.
 

@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    modelx_version: str = "0.5.2-SNAPSHOT"
+    modelx_version: str = "0.5.3-SNAPSHOT"
     app_env: str = "development"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
@@ -61,6 +61,8 @@ class Settings(BaseSettings):
     # Lower thresholds are isolated to weekend testing; normal automation remains at 70.
     automation_weekend_min_technical_score: int = 40
     automation_weekend_min_final_rating: int = 40
+    # Weekend-only: a high-rated WATCH can enter paper testing when technical evidence is also strong.
+    automation_weekend_watch_trade_min_rating: int = 70
 
     def approval_recipients(self) -> list[str]:
         return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]

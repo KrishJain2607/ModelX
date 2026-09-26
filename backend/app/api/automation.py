@@ -4,7 +4,7 @@ import gzip
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
@@ -24,6 +24,7 @@ router = APIRouter(prefix="/automation", tags=["automation"])
 _last_scan: dict[str, Any] = {"status": "NOT_RUN", "candidates": [], "approvals": []}
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 WEEKEND_SCAN_STATE_PATH = Path("data/modelx_weekend_scan_state.json")
+WEEKEND_SCAN_STATE_VERSION = "0.5.3"
 
 
 def _auth(value: str | None) -> None:
@@ -137,7 +138,8 @@ def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict
     try:
         state = json.loads(WEEKEND_SCAN_STATE_PATH.read_text(encoding="utf-8"))
         if (
-            state.get("date") == today
+            state.get("version") == WEEKEND_SCAN_STATE_VERSION
+            and state.get("date") == today
             and state.get("status") in {"RUNNING", "COMPLETED"}
             and isinstance(state.get("universe"), list)
             and state.get("universe")
@@ -147,6 +149,7 @@ def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict
         pass
 
     return {
+        "version": WEEKEND_SCAN_STATE_VERSION,
         "date": today,
         "status": "RUNNING",
         "next_batch": 0,
@@ -161,6 +164,13 @@ def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict
         "universe": universe,
         "candidates": [],
         "council_processed_symbols": [],
+        "council_buy_candidates": 0,
+        "council_watch": 0,
+        "council_no_signal": 0,
+        "council_errors": 0,
+        "risk_rejections": 0,
+        "paper_trade_rejections": 0,
+        "decision_log": [],
         "started_at": _now_ist().isoformat(),
         "completed_at": None,
     }
@@ -234,6 +244,7 @@ def _merge_top_candidates(
     )[: settings.automation_max_historical_candidates]
 
 
+
 def _run_weekend_council(
     state: dict[str, Any],
     min_final_rating: int,
@@ -269,7 +280,64 @@ def _run_weekend_council(
             )
             council_results.append(result.model_dump())
             processed_symbols.add(symbol)
-            if result.council.decision != "BUY_CANDIDATE" or result.final_rating < min_final_rating:
+
+            decision = result.council.decision
+            final_rating = int(result.final_rating)
+            technical_score = int(technical.get("score", 0))
+
+            if decision == "BUY_CANDIDATE":
+                state["council_buy_candidates"] = int(state.get("council_buy_candidates", 0)) + 1
+            elif decision == "WATCH":
+                state["council_watch"] = int(state.get("council_watch", 0)) + 1
+            else:
+                state["council_no_signal"] = int(state.get("council_no_signal", 0)) + 1
+
+            # Weekend-only paper-test rule:
+            # BUY_CANDIDATE passes the weekend final-rating gate.
+            # A high-rated WATCH is also eligible when both AI and deterministic
+            # technical evidence are at least 70/100. Normal automation is unchanged.
+            watch_promotion = (
+                decision == "WATCH"
+                and final_rating >= settings.automation_weekend_watch_trade_min_rating
+                and technical_score >= settings.automation_weekend_watch_trade_min_rating
+            )
+            trade_eligible = (
+                (decision == "BUY_CANDIDATE" and final_rating >= min_final_rating)
+                or watch_promotion
+            )
+
+            if decision == "BUY_CANDIDATE" and final_rating >= min_final_rating:
+                decision_reason = "AI Council BUY_CANDIDATE passed the weekend rating threshold"
+            elif watch_promotion:
+                decision_reason = (
+                    "AI Council WATCH promoted for weekend paper testing: AI rating "
+                    + str(final_rating)
+                    + "/100 and technical score "
+                    + str(technical_score)
+                    + "/100 both meet the "
+                    + str(settings.automation_weekend_watch_trade_min_rating)
+                    + "/100 WATCH threshold"
+                )
+            else:
+                decision_reason = (
+                    "AI Council returned "
+                    + str(decision)
+                    + " with final rating "
+                    + str(final_rating)
+                    + "/100"
+                )
+
+            state.setdefault("decision_log", []).append({
+                "symbol": symbol,
+                "technical_score": technical_score,
+                "ai_rating": final_rating,
+                "decision": decision,
+                "trade_eligible": trade_eligible,
+                "reason": decision_reason,
+            })
+            state["decision_log"] = state["decision_log"][-50:]
+
+            if not trade_eligible:
                 continue
 
             entry, stop, target = _setup(technical)
@@ -284,13 +352,19 @@ def _run_weekend_council(
                 daily_realized_loss=daily_realized_loss,
             )
             if not plan["eligible_for_paper_trade"]:
-                raise ValueError("Weekend test trade rejected by risk plan")
+                state["risk_rejections"] = int(state.get("risk_rejections", 0)) + 1
+                state["decision_log"][-1]["trade_eligible"] = False
+                state["decision_log"][-1]["reason"] = (
+                    "Passed AI gate but risk plan rejected the trade: "
+                    + "; ".join(plan.get("warnings", []))
+                )
+                continue
 
             trade = {
                 "symbol": symbol,
                 "instrument_key": row["instrument_key"],
-                "rating": int(result.final_rating),
-                "signal": result.council.decision,
+                "rating": final_rating,
+                "signal": decision,
                 "market_regime": technical.get("market_regime", "UNKNOWN"),
                 "entry_price": entry,
                 "stop_loss": stop,
@@ -301,23 +375,40 @@ def _run_weekend_council(
                 "source": "AUTOMATED_WEEKEND_TEST",
             }
             if settings.automation_weekend_auto_approve:
-                paper_orders.append(_open_paper_trade(trade, "AUTOMATED_WEEKEND_TEST"))
+                try:
+                    paper_trade = _open_paper_trade(trade, "AUTOMATED_WEEKEND_TEST")
+                    paper_orders.append(paper_trade)
+                    state["decision_log"][-1]["reason"] = "Paper trade opened automatically in weekend test mode"
+                except Exception as exc:
+                    state["paper_trade_rejections"] = int(state.get("paper_trade_rejections", 0)) + 1
+                    state["decision_log"][-1]["trade_eligible"] = False
+                    state["decision_log"][-1]["reason"] = "Paper trade could not be opened: " + str(exc)
+                    raise
             else:
-                approvals.append(
-                    _approval(
-                        symbol,
-                        int(result.final_rating),
-                        technical,
-                        result,
-                        row["instrument_key"],
-                    )
+                approval = _approval(
+                    symbol,
+                    final_rating,
+                    technical,
+                    result,
+                    row["instrument_key"],
                 )
-        except Exception:
+                approvals.append(approval)
+                state["decision_log"][-1]["reason"] = "Approval email created"
+        except Exception as exc:
+            state["council_errors"] = int(state.get("council_errors", 0)) + 1
+            state.setdefault("decision_log", []).append({
+                "symbol": symbol,
+                "technical_score": int(technical.get("score", 0)),
+                "ai_rating": None,
+                "decision": "ERROR",
+                "trade_eligible": False,
+                "reason": "AI Council processing failed: " + type(exc).__name__,
+            })
+            state["decision_log"] = state["decision_log"][-50:]
             logger.exception("[AUTO] council/approval failed for %s", symbol)
 
     state["council_processed_symbols"] = sorted(processed_symbols)
     return council_results, approvals, paper_orders
-
 
 def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_final_rating: int) -> dict[str, Any]:
     universe = _universe()
@@ -433,6 +524,14 @@ def _build_weekend_scan_result(
         "weekend_auto_approve": settings.automation_weekend_auto_approve,
         "min_technical_score_used": min_technical_score,
         "min_final_rating_used": min_final_rating,
+        "weekend_watch_trade_min_rating": settings.automation_weekend_watch_trade_min_rating,
+        "council_buy_candidates": int(state.get("council_buy_candidates", 0)),
+        "council_watch": int(state.get("council_watch", 0)),
+        "council_no_signal": int(state.get("council_no_signal", 0)),
+        "council_errors": int(state.get("council_errors", 0)),
+        "risk_rejections": int(state.get("risk_rejections", 0)),
+        "paper_trade_rejections": int(state.get("paper_trade_rejections", 0)),
+        "decision_log": state.get("decision_log", [])[-20:],
         "council_results": council_results,
         "top_technical": [
             {
@@ -711,6 +810,9 @@ def status() -> dict[str, Any]:
         "max_ai_candidates": settings.automation_max_ai_candidates,
         "min_technical_score": settings.automation_min_technical_score,
         "min_final_rating": settings.automation_min_final_rating,
+        "weekend_min_technical_score": settings.automation_weekend_min_technical_score,
+        "weekend_min_final_rating": settings.automation_weekend_min_final_rating,
+        "weekend_watch_trade_min_rating": settings.automation_weekend_watch_trade_min_rating,
         "paper_trading_capital": settings.paper_trading_capital,
         "weekend_test_mode": settings.automation_weekend_test_mode,
         "weekend_auto_approve": settings.automation_weekend_auto_approve,

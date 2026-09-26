@@ -53,6 +53,18 @@ PAGE = """<!doctype html>
     .result:hover { transform:translateX(3px); border-color:#52658d; background:#111b31; }
     .metric { transition:transform .16s ease, border-color .16s ease; }
     .metric:hover { transform:translateY(-2px); border-color:#465a82; }
+    .auto-summary { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; margin:12px 0 16px; }
+    .auto-hero { background:#0d1425; border:1px solid #293650; border-radius:14px; padding:14px; }
+    .auto-hero .eyebrow { color:#8e9bb5; font-size:12px; text-transform:uppercase; letter-spacing:.06em; }
+    .auto-hero .big { font-size:24px; font-weight:800; margin-top:4px; }
+    .progress { height:9px; border-radius:99px; background:#202b42; overflow:hidden; margin-top:8px; }
+    .progress > div { height:100%; background:#7187c7; width:0; transition:width .25s ease; }
+    .decision { border-left:3px solid #52658d; padding:10px 12px; margin-top:8px; background:#0d1425; border-radius:8px; }
+    .decision.buy { border-left-color:#67b87d; } .decision.watch { border-left-color:#d7ad57; } .decision.blocked { border-left-color:#a85d68; }
+    .section-title { margin-top:18px; margin-bottom:6px; font-size:14px; font-weight:700; }
+    .details { margin-top:12px; }
+    .details summary { cursor:pointer; color:#9ca8c0; font-size:13px; }
+    .small-note { font-size:12px; color:#7f8aa1; }
     .toast { position:fixed; right:18px; bottom:18px; z-index:20; max-width:360px; padding:12px 15px; border:1px solid #34415e; border-radius:12px; background:#121a2d; box-shadow:0 12px 35px rgba(0,0,0,.3); color:#e8ecf7; opacity:0; transform:translateY(12px); pointer-events:none; transition:opacity .2s ease, transform .2s ease; }
     .toast.show { opacity:1; transform:translateY(0); } .toast.success { border-color:#39704b; } .toast.error { border-color:#783d48; }
     @keyframes spin { to { transform:rotate(360deg); } }
@@ -69,14 +81,14 @@ PAGE = """<!doctype html>
       <h1>ModelX</h1>
       <p>Research → risk plan → paper trade. Market data is read-only and live trading is hard-disabled.</p>
     </div>
-    <div class="badge">VERSION 0.5.2-SNAPSHOT · LIVE TRADING: OFF</div>
+    <div class="badge">VERSION 0.5.3-SNAPSHOT · LIVE TRADING: OFF</div>
   </section>
 
   <div class="grid">
     <section class="card">
       <h2>System status</h2>
       <p class="muted">Current provider, authentication and safety state.</p>
-      <pre id="health">Checking...</pre>
+      <details class="details"><summary>Technical response</summary><pre id="health">Checking...</pre></details>
       <div id="healthStatus" class="action-status">Checking system health…</div>
       <button class="secondary" onclick="loadHealth(this)">Refresh status</button>
     </section>
@@ -100,7 +112,7 @@ PAGE = """<!doctype html>
       <div id="score"></div>
       <div id="metrics" class="metrics"></div>
       <div id="factors"></div>
-      <pre id="analysisResult">No analysis run yet.</pre>
+      <details class="details"><summary>Technical analysis response</summary><pre id="analysisResult">No analysis run yet.</pre></details>
     </section>
 
     <section class="card">
@@ -111,7 +123,7 @@ PAGE = """<!doctype html>
       <button onclick="scan(this)">Run scan</button>
       <button class="secondary" onclick="emailScan(this)">Email scan</button>
       <div id="scanResults" class="results"></div>
-      <pre id="scanRaw">No scan run yet.</pre>
+      <details class="details"><summary>Technical scan response</summary><pre id="scanRaw">No scan run yet.</pre></details>
     </section>
 
     <section class="card">
@@ -124,7 +136,7 @@ PAGE = """<!doctype html>
         <div><label>Available capital</label><input id="capital" type="number" step="1000" value="100000"></div>
       </div>
       <button onclick="riskPlan(this)">Calculate risk plan</button>
-      <pre id="riskResult">No risk plan calculated.</pre>
+      <details class="details"><summary>Technical risk response</summary><pre id="riskResult">No risk plan calculated.</pre></details>
     </section>
 
     <section class="card">
@@ -142,26 +154,33 @@ PAGE = """<!doctype html>
       <button onclick="openPaperTrade(this)">Open paper trade</button>
       <button class="secondary" onclick="loadPaperTrades(this)">Refresh paper trades</button>
       <div id="paperTrades" class="results"></div>
-      <pre id="paperRaw">No paper trades loaded.</pre>
+      <details class="details"><summary>Technical paper-trade response</summary><pre id="paperRaw">No paper trades loaded.</pre></details>
     </section>
+
 
     <section class="card wide">
       <h2>Autonomous paper trading</h2>
-      <p class="muted">Live view of the 30-minute autonomous loop. The dashboard reads the latest in-process state; paper trades remain disabled for live execution.</p>
-      <div class="metrics" id="autoMetrics"></div>
-      <div class="row">
-        <div>
-          <div class="muted">Latest candidates</div>
-          <div id="autoCandidates" class="results"></div>
-        </div>
-        <div>
-          <div class="muted">Open paper trades</div>
-          <div id="autoTrades" class="results"></div>
-        </div>
+      <p class="muted">A human-readable view of the autonomous research and paper-trading loop. No broker order is sent while live trading is OFF.</p>
+      <div class="auto-summary" id="autoSummary">
+        <div class="auto-hero"><div class="eyebrow">System</div><div class="big" id="autoMode">Loading…</div><div class="small-note" id="autoModeNote">Checking configuration</div></div>
+        <div class="auto-hero"><div class="eyebrow">Scan progress</div><div class="big" id="autoProgressText">—</div><div class="progress"><div id="autoProgressBar"></div></div></div>
+        <div class="auto-hero"><div class="eyebrow">Paper capital</div><div class="big" id="autoCapital">—</div><div class="small-note">Configured test capital</div></div>
+        <div class="auto-hero"><div class="eyebrow">Open positions</div><div class="big" id="autoOpenTrades">—</div><div class="small-note">Currently open in this process</div></div>
       </div>
+      <div class="metrics" id="autoMetrics"></div>
+      <div class="card" style="padding:14px;margin-top:12px;background:#0d1425;">
+        <h2 style="font-size:17px;">How ModelX decides in weekend test mode</h2>
+        <div id="autoRules" class="muted">Loading test rules…</div>
+      </div>
+      <div class="section-title">Latest decisions</div>
+      <div id="autoDecisions" class="results"></div>
+      <div class="section-title">Latest technical candidates</div>
+      <div id="autoCandidates" class="results"></div>
+      <div class="section-title">Open paper trades</div>
+      <div id="autoTrades" class="results"></div>
       <div id="automationStatus" class="action-status">Loading autonomous status…</div>
       <button class="secondary" onclick="loadAutomation(this)">Refresh autonomous status</button>
-      <pre id="automationRaw">No autonomous scan run yet.</pre>
+      <details class="details"><summary>Technical response details</summary><pre id="automationRaw">No autonomous scan run yet.</pre></details>
     </section>
 
     <section class="card wide">
@@ -211,32 +230,57 @@ function toast(message, type='success') {
   clearTimeout(window.modelXToastTimer);
   window.modelXToastTimer=setTimeout(()=>el.className='toast',2600);
 }
+
 async function loadAutomation(button){
   if(button)setBusy(button,true,'Refreshing…');
   try{
     const {r,data}=await getJson('/api/automation/status');
     if(!r.ok) throw new Error(data.detail||'Automation status failed');
     const last=data.last_scan||{};
+    const weekend=Boolean(data.weekend_test_mode && last.window_status==='WEEKEND_TEST');
     const active=data.enabled && !data.live_trading_enabled;
-    document.getElementById('autoMetrics').innerHTML=[
-      ['Mode',data.mode||'PAPER'],
-      ['Status',active?'READY':'CHECK CONFIG'],
-      ['Capital','₹'+Number(data.paper_trading_capital||0).toLocaleString('en-IN')],
-      ['Universe',last.universe_ranked??'—'],
-      ['Batch',last.current_batch!==undefined ? (last.current_batch+'/'+(last.total_batches??'—')) : '—'],
-      ['Processed',last.processed!==undefined ? (last.processed+'/'+(last.universe_ranked??'—')) : '—'],
+    document.getElementById('autoMode').textContent=active ? (weekend ? 'PAPER · WEEKEND TEST' : 'PAPER') : 'CHECK CONFIG';
+    document.getElementById('autoModeNote').textContent=active ? (weekend ? 'Live trading is disabled' : 'Autonomous paper loop ready') : 'Check safety configuration';
+    const universe=Number(last.universe_ranked||0);
+    const processed=Number(last.processed||0);
+    const progress=universe ? Math.min(100,(processed/universe)*100) : 0;
+    document.getElementById('autoProgressText').textContent=universe ? (processed.toLocaleString('en-IN')+' / '+universe.toLocaleString('en-IN')) : 'Not started';
+    document.getElementById('autoProgressBar').style.width=progress+'%';
+    document.getElementById('autoCapital').textContent='₹'+Number(data.paper_trading_capital||0).toLocaleString('en-IN');
+    document.getElementById('autoOpenTrades').textContent=String(data.open_paper_trades??0);
+    const metricItems=[
+      ['Batch',last.current_batch!==undefined ? (last.current_batch+' / '+(last.total_batches??'—')) : '—'],
+      ['Stocks processed',last.processed??'—'],
+      ['Technical candidates',last.technical_candidates??0],
+      ['AI evaluated',last.ai_candidates??0],
+      ['AI BUY',last.council_buy_candidates??0],
+      ['AI WATCH',last.council_watch??0],
+      ['AI NO SIGNAL',last.council_no_signal??0],
+      ['AI errors',last.council_errors??0],
+      ['Risk rejected',last.risk_rejections??0],
+      ['Paper trades opened',last.paper_orders_opened??0],
       ['Insufficient history',last.skipped_insufficient_history??0],
-      ['Technical candidates',last.technical_candidates??'—'],
-      ['AI Council',last.ai_candidates??'—'],
-      ['Approval emails',last.approvals_sent??'—'],
-      ['Paper orders',last.paper_orders_opened??0],
-      ['Open trades',data.open_paper_trades??0],
-      ['Weekend test',data.weekend_test_mode?'ON':'OFF']
-    ].map(x=>'<div class="metric">'+x[0]+'<b>'+String(x[1])+'</b></div>').join('');
-    document.getElementById('automationStatus').textContent=last.status==='OK'
-      ? 'Last cycle: '+(last.ist_time||'—')+' · '+(last.window_status||'')+' · next scheduled run is approximately every 30 minutes.'
-      : 'No completed autonomous cycle in this process yet.';
-    document.getElementById('automationStatus').className='action-status '+(last.status==='OK'?'success':'active');
+      ['Weekend auto-approve',data.weekend_auto_approve?'ON':'OFF']
+    ];
+    document.getElementById('autoMetrics').innerHTML=metricItems.map(x=>'<div class="metric">'+x[0]+'<b>'+String(x[1])+'</b></div>').join('');
+    const weekendTech=data.weekend_min_technical_score??'—';
+    const weekendFinal=data.weekend_min_final_rating??'—';
+    const watchTrade=data.weekend_watch_trade_min_rating??'—';
+    document.getElementById('autoRules').innerHTML=weekend
+      ? '<div>• Technical screening: <strong>'+weekendTech+'/100</strong> minimum.</div>'
+        + '<div>• AI BUY_CANDIDATE: final rating must be <strong>'+weekendFinal+'/100</strong> or higher.</div>'
+        + '<div>• AI WATCH: can enter paper testing only when both AI rating and technical score are <strong>'+watchTrade+'/100</strong> or higher.</div>'
+        + '<div class="small-note" style="margin-top:7px;">These relaxed rules are isolated to weekend paper testing. Normal automation remains '+data.min_technical_score+'/100 technical and '+data.min_final_rating+'/100 final rating.</div>'
+      : '<div>Normal automation thresholds: technical <strong>'+data.min_technical_score+'/100</strong>, final rating <strong>'+data.min_final_rating+'/100</strong>.</div>';
+    const decisions=last.decision_log||[];
+    document.getElementById('autoDecisions').innerHTML=decisions.length
+      ? decisions.slice().reverse().slice(0,10).map(d=>{
+          const cls=d.trade_eligible ? 'buy' : (d.decision==='WATCH' ? 'watch' : 'blocked');
+          const rating=d.ai_rating===null||d.ai_rating===undefined ? 'AI failed' : ('AI '+d.ai_rating+'/100');
+          const tradeText=d.trade_eligible ? 'PAPER TRADE ELIGIBLE' : 'NOT TRADED';
+          return '<div class="decision '+cls+'"><strong>'+d.symbol+'</strong> · Technical '+d.technical_score+'/100 · '+rating+' · <strong>'+d.decision+'</strong><br><span class="muted">'+tradeText+' — '+d.reason+'</span></div>';
+        }).join('')
+      : '<div class="muted">No AI decisions recorded yet. The next completed batch will appear here.</div>';
     const candidates=last.top_technical||[];
     const aiBySymbol={};
     (last.council_results||[]).forEach(x=>{
@@ -246,20 +290,23 @@ async function loadAutomation(button){
     document.getElementById('autoCandidates').innerHTML=candidates.length
       ? candidates.slice(0,10).map(x=>{
           const ai=aiBySymbol[String(x.symbol).toUpperCase()];
-          const aiText=ai ? ' · AI '+(ai.final_rating??'—')+'/100 · '+(ai.council?.decision||'') : ' · AI not run';
-          return '<div class="result"><strong>'+x.symbol+'</strong><span class="pill">'+x.technical_score+'/100</span><br><span class="muted">'+x.signal+' · '+x.market_regime+aiText+'</span></div>';
+          const aiText=ai ? ('AI '+(ai.final_rating??'—')+'/100 · '+(ai.council?.decision||'UNKNOWN')) : 'AI not evaluated yet';
+          return '<div class="result"><strong>'+x.symbol+'</strong><span class="pill">'+x.technical_score+'/100</span><br><span class="muted">'+x.signal+' · '+x.market_regime+' · '+aiText+'</span></div>';
         }).join('')
-      : '<div class="muted">No qualifying technical candidates in the latest cycle.</div>';
+      : '<div class="muted">No qualifying technical candidates in the latest scan.</div>';
     const {data:trades}=await getJson('/api/analysis/paper-trades');
     const open=(trades.trades||[]).filter(t=>t.status==='OPEN');
     document.getElementById('autoTrades').innerHTML=open.length
-      ? open.map(t=>'<div class="result"><strong>'+t.symbol+'</strong><span class="pill">OPEN</span><br><span class="muted">Qty '+t.quantity+' · Entry ₹'+t.entry_price+' · SL ₹'+t.stop_loss+' · Target ₹'+t.target_price+'</span></div>').join('')
-      : '<div class="muted">No open paper trades.</div>';
+      ? open.map(t=>'<div class="result"><strong>'+t.symbol+'</strong><span class="pill">OPEN</span><br><span class="muted">Qty '+t.quantity+' · Entry ₹'+t.entry_price+' · SL ₹'+t.stop_loss+' · Target ₹'+t.target_price+' · Risk ₹'+Number(t.planned_capital_at_risk||0).toFixed(2)+'</span></div>').join('')
+      : '<div class="muted">No open paper trades yet.</div>';
+    const cycleStatus=last.status==='COMPLETED' ? 'Scan complete' : (last.status==='BATCH_COMPLETE' ? 'Batch complete — continuing automatically' : 'No completed autonomous cycle yet');
+    setStatus('automationStatus',cycleStatus+' · '+(last.ist_time||'—')+' · '+(last.window_status||'—'),last.status==='COMPLETED'||last.status==='BATCH_COMPLETE'?'success':'active');
     show('automationRaw',data);
   }catch(e){
     setStatus('automationStatus',e.message||'Automation status failed','error');
   }finally{if(button)setBusy(button,false);}
 }
+
 async function loadHealth(button) {
   setBusy(button,true,'Checking…'); setStatus('healthStatus','Checking system health…');
   try {
