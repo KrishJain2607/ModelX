@@ -43,7 +43,11 @@ def create_approval(trade: dict[str, Any]) -> tuple[str, dict[str, Any]]:
     _APPROVALS[approval_id] = record
 
     payload = _b64(json.dumps(
-        {"approval_id": approval_id, "exp": int(expires_at.timestamp())},
+        {
+            "approval_id": approval_id,
+            "exp": int(expires_at.timestamp()),
+            "trade": trade,
+        },
         separators=(",", ":"),
         sort_keys=True,
     ).encode())
@@ -68,7 +72,19 @@ def resolve(token: str, decision: str, recipient: str | None = None) -> dict[str
 
     record = _APPROVALS.get(data["approval_id"])
     if not record:
-        raise ValueError("Approval is no longer available; the service may have restarted")
+        trade = data.get("trade")
+        if not isinstance(trade, dict):
+            raise ValueError("Approval is no longer available; the service may have restarted")
+        record = {
+            "approval_id": data["approval_id"],
+            "status": "PENDING",
+            "trade": trade,
+            "approved_by": None,
+            "rejected_by": [],
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "expires_at": datetime.fromtimestamp(int(data["exp"]), timezone.utc).isoformat(),
+        }
+        _APPROVALS[data["approval_id"]] = record
 
     if record["status"] in {"EXECUTED", "EXECUTION_FAILED", "REJECTED", "EXPIRED"}:
         return record
