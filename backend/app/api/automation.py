@@ -160,6 +160,7 @@ def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict
         "technical_errors": 0,
         "universe": universe,
         "candidates": [],
+        "council_processed_symbols": [],
         "started_at": _now_ist().isoformat(),
         "completed_at": None,
     }
@@ -238,13 +239,18 @@ def _run_weekend_council(
     min_final_rating: int,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
     technical_candidates = state.get("candidates", [])
-    keys = [row["instrument_key"] for row in technical_candidates]
+    processed_symbols = set(state.get("council_processed_symbols", []))
+    candidates_for_ai = [
+        row for row in technical_candidates
+        if row["trading_symbol"].upper() not in processed_symbols
+    ][: settings.automation_max_ai_candidates]
+    keys = [row["instrument_key"] for row in candidates_for_ai]
     news = _upstox().news(keys)
     approvals: list[dict[str, Any]] = []
     paper_orders: list[dict[str, Any]] = []
     council_results: list[dict[str, Any]] = []
 
-    for row in technical_candidates[: settings.automation_max_ai_candidates]:
+    for row in candidates_for_ai:
         symbol = row["trading_symbol"].upper()
         technical = row["technical"]
         try:
@@ -262,6 +268,7 @@ def _run_weekend_council(
                 sentiment_input={},
             )
             council_results.append(result.model_dump())
+            processed_symbols.add(symbol)
             if result.council.decision != "BUY_CANDIDATE" or result.final_rating < min_final_rating:
                 continue
 
@@ -308,6 +315,7 @@ def _run_weekend_council(
         except Exception:
             logger.exception("[AUTO] council/approval failed for %s", symbol)
 
+    state["council_processed_symbols"] = sorted(processed_symbols)
     return council_results, approvals, paper_orders
 
 
@@ -343,15 +351,28 @@ def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_f
     state["candidates"] = _merge_top_candidates(state.get("candidates", []), candidates)
     state["next_batch"] = batch_index + 1
 
+    # Run the AI/paper-trade stage after every batch. This makes the weekend
+    # test useful immediately instead of waiting for the entire NSE universe.
+    council_results, approvals, paper_orders = _run_weekend_council(
+        state,
+        min_final_rating,
+    )
+    state.setdefault("all_council_results", [])
+    state["all_council_results"].extend(council_results)
+    state.setdefault("all_approvals", [])
+    state["all_approvals"].extend(approvals)
+    state.setdefault("all_paper_orders", [])
+    state["all_paper_orders"].extend(paper_orders)
+
     if state["next_batch"] < int(state["total_batches"]):
         _save_weekend_scan_state(state)
         result = _build_weekend_scan_result(
             state,
             min_technical_score,
             min_final_rating,
-            council_results=[],
-            approvals=[],
-            paper_orders=[],
+            council_results=state.get("all_council_results", []),
+            approvals=state.get("all_approvals", []),
+            paper_orders=state.get("all_paper_orders", []),
             status="BATCH_COMPLETE",
         )
         global _last_scan
@@ -360,18 +381,17 @@ def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_f
 
     state["status"] = "COMPLETED"
     state["completed_at"] = _now_ist().isoformat()
-    council_results, approvals, paper_orders = _run_weekend_council(state, min_final_rating)
-    state["council_results"] = council_results
-    state["approvals"] = approvals
-    state["paper_orders"] = paper_orders
+    state["council_results"] = state.get("all_council_results", [])
+    state["approvals"] = state.get("all_approvals", [])
+    state["paper_orders"] = state.get("all_paper_orders", [])
     _save_weekend_scan_state(state)
     result = _build_weekend_scan_result(
         state,
         min_technical_score,
         min_final_rating,
-        council_results=council_results,
-        approvals=approvals,
-        paper_orders=paper_orders,
+        council_results=state["council_results"],
+        approvals=state["approvals"],
+        paper_orders=state["paper_orders"],
         status="COMPLETED",
     )
     _last_scan = result
