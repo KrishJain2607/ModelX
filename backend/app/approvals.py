@@ -67,7 +67,7 @@ def resolve(token: str, decision: str, recipient: str | None = None) -> dict[str
         raise ValueError("Approval link has expired")
 
     allowed = settings.approval_recipients()
-    if recipient.lower() not in allowed:
+    if not recipient or recipient.lower() not in allowed:
         raise ValueError("Recipient is not authorised for this approval")
 
     record = _APPROVALS.get(data["approval_id"])
