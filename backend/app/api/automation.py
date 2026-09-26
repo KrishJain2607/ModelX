@@ -4,6 +4,7 @@ import gzip
 import json
 import logging
 from datetime import date, datetime, timedelta
+from uuid import uuid4
 from zoneinfo import ZoneInfo
 from typing import Any
 
@@ -42,6 +43,19 @@ def _universe() -> list[dict[str, Any]]:
         and r.get("instrument_key")
         and r.get("trading_symbol")
     ]
+    # NSE cash equities do not trade on normal Saturdays/Sundays. In weekend
+    # test mode we deliberately use a small, liquid test universe and the latest
+    # completed daily candle, so the research/paper pipeline can be exercised
+    # without pretending that a live market quote exists.
+    if _now_ist().weekday() >= 5 and settings.automation_weekend_test_mode:
+        wanted = {
+            symbol.strip().upper()
+            for symbol in settings.automation_weekend_symbols.split(",")
+            if symbol.strip()
+        }
+        weekend_rows = [r for r in rows if str(r.get("trading_symbol", "")).upper() in wanted]
+        return weekend_rows[:settings.automation_max_quote_universe]
+
     quotes = _upstox().full_market_quotes([r["instrument_key"] for r in rows])
     ranked = []
     for row in rows:
@@ -64,6 +78,10 @@ def _now_ist() -> datetime:
 
 def _operating_window() -> tuple[bool, str]:
     now = _now_ist()
+    if now.weekday() >= 5:
+        if settings.automation_weekend_test_mode:
+            return True, "WEEKEND_TEST"
+        return False, "WEEKEND_MARKET_CLOSED"
     if now.hour >= 22:
         return False, "HARD_STOP_22_00_IST"
     if now.hour < 9:
@@ -81,6 +99,45 @@ def _portfolio_state() -> tuple[float, int, float]:
             if pnl < 0:
                 daily_loss += abs(pnl)
     return exposure, len(open_trades), daily_loss
+
+def _open_paper_trade(trade: dict[str, Any], source: str) -> dict[str, Any]:
+    """Open a paper position directly for an explicitly enabled test path."""
+    open_positions = sum(1 for item in _paper_trades.values() if item.get("status") == "OPEN")
+    if open_positions >= settings.max_open_positions:
+        raise ValueError("Maximum open paper positions reached")
+
+    trade_id = uuid4().hex[:12]
+    entry = float(trade["entry_price"])
+    stop = float(trade["stop_loss"])
+    target = float(trade["target_price"])
+    quantity = int(trade["quantity"])
+    risk_per_share = entry - stop
+    paper_trade = {
+        "trade_id": trade_id,
+        "symbol": str(trade["symbol"]).upper(),
+        "instrument_key": trade.get("instrument_key"),
+        "quantity": quantity,
+        "entry_price": entry,
+        "stop_loss": stop,
+        "target_price": target,
+        "status": "OPEN",
+        "opened_at": _now_ist().isoformat(),
+        "exit_price": None,
+        "realized_pnl": None,
+        "risk_per_share": risk_per_share,
+        "planned_capital_at_risk": quantity * risk_per_share,
+        "planned_risk_reward": float(trade["risk_reward"]),
+        "approval_id": None,
+        "rating": int(trade["rating"]),
+        "source": source,
+    }
+    _paper_trades[trade_id] = paper_trade
+    logger.info(
+        "[PAPER-WEEKEND] Trade opened: id=%s symbol=%s qty=%s entry=%.2f sl=%.2f target=%.2f",
+        trade_id, trade["symbol"], quantity, entry, stop, target,
+    )
+    return paper_trade
+
 
 def _setup(technical: dict[str, Any]) -> tuple[float, float, float]:
     latest = technical.get("latest", {})
@@ -144,7 +201,7 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
     if not settings.approval_secret or not settings.approval_recipients():
         raise HTTPException(status_code=503, detail="Approval settings are incomplete")
 
-    today = date.today()
+    today = _now_ist().date()
     start = (today - timedelta(days=365)).isoformat()
     universe = _universe()
     technical_candidates = []
@@ -162,6 +219,7 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
     news = _upstox().news(keys)
 
     approvals = []
+    paper_orders = []
     council_results = []
     for row in technical_candidates[:settings.automation_max_ai_candidates]:
         symbol = row["trading_symbol"].upper()
@@ -182,7 +240,40 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
             )
             council_results.append(result.model_dump())
             if result.council.decision == "BUY_CANDIDATE" and result.final_rating >= settings.automation_min_final_rating:
-                approvals.append(_approval(symbol, int(result.final_rating), technical, result, row["instrument_key"]))
+                if (
+                    window_status == "WEEKEND_TEST"
+                    and settings.automation_weekend_auto_approve
+                ):
+                    entry, stop, target = _setup(technical)
+                    current_exposure, open_positions, daily_realized_loss = _portfolio_state()
+                    plan = _risk_plan(
+                        entry,
+                        stop,
+                        target,
+                        settings.paper_trading_capital,
+                        current_exposure=current_exposure,
+                        open_positions=open_positions,
+                        daily_realized_loss=daily_realized_loss,
+                    )
+                    if not plan["eligible_for_paper_trade"]:
+                        raise ValueError("Weekend test trade rejected by risk plan")
+                    trade = {
+                        "symbol": symbol,
+                        "instrument_key": row["instrument_key"],
+                        "rating": int(result.final_rating),
+                        "signal": result.council.decision,
+                        "market_regime": technical.get("market_regime", "UNKNOWN"),
+                        "entry_price": entry,
+                        "stop_loss": stop,
+                        "target_price": target,
+                        "quantity": int(plan["position_size"]),
+                        "risk_reward": float(plan["risk_reward"]),
+                        "capital_at_risk": float(plan["capital_at_risk"]),
+                        "source": "AUTOMATED_WEEKEND_TEST",
+                    }
+                    paper_orders.append(_open_paper_trade(trade, "AUTOMATED_WEEKEND_TEST"))
+                else:
+                    approvals.append(_approval(symbol, int(result.final_rating), technical, result, row["instrument_key"]))
         except Exception:
             logger.exception("[AUTO] council/approval failed for %s", symbol)
 
@@ -200,6 +291,10 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
         "ai_candidates": len(council_results),
         "approvals_sent": len(approvals),
         "approvals": approvals,
+        "paper_orders_opened": len(paper_orders),
+        "paper_orders": paper_orders,
+        "weekend_test_mode": settings.automation_weekend_test_mode,
+        "weekend_auto_approve": settings.automation_weekend_auto_approve,
         "council_results": council_results,
         "top_technical": [
             {
@@ -276,6 +371,8 @@ def status() -> dict[str, Any]:
         "min_technical_score": settings.automation_min_technical_score,
         "min_final_rating": settings.automation_min_final_rating,
         "paper_trading_capital": settings.paper_trading_capital,
+        "weekend_test_mode": settings.automation_weekend_test_mode,
+        "weekend_auto_approve": settings.automation_weekend_auto_approve,
         "last_scan": _last_scan,
         "open_paper_trades": sum(1 for t in _paper_trades.values() if t.get("status") == "OPEN"),
         "closed_paper_trades": sum(1 for t in _paper_trades.values() if str(t.get("status", "")).startswith("CLOSED_")),
