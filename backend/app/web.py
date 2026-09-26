@@ -69,7 +69,7 @@ PAGE = """<!doctype html>
       <h1>ModelX</h1>
       <p>Research → risk plan → paper trade. Market data is read-only and live trading is hard-disabled.</p>
     </div>
-    <div class="badge">VERSION 0.5.1-SNAPSHOT · LIVE TRADING: OFF</div>
+    <div class="badge">VERSION 0.5.2-SNAPSHOT · LIVE TRADING: OFF</div>
   </section>
 
   <div class="grid">
@@ -223,6 +223,9 @@ async function loadAutomation(button){
       ['Status',active?'READY':'CHECK CONFIG'],
       ['Capital','₹'+Number(data.paper_trading_capital||0).toLocaleString('en-IN')],
       ['Universe',last.universe_ranked??'—'],
+      ['Batch',last.current_batch!==undefined ? (last.current_batch+'/'+(last.total_batches??'—')) : '—'],
+      ['Processed',last.processed!==undefined ? (last.processed+'/'+(last.universe_ranked??'—')) : '—'],
+      ['Insufficient history',last.skipped_insufficient_history??0],
       ['Technical candidates',last.technical_candidates??'—'],
       ['AI Council',last.ai_candidates??'—'],
       ['Approval emails',last.approvals_sent??'—'],

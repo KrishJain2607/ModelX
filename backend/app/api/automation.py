@@ -4,7 +4,8 @@ import gzip
 import json
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
+from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -22,6 +23,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/automation", tags=["automation"])
 _last_scan: dict[str, Any] = {"status": "NOT_RUN", "candidates": [], "approvals": []}
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
+WEEKEND_SCAN_STATE_PATH = Path("data/modelx_weekend_scan_state.json")
 
 
 def _auth(value: str | None) -> None:
@@ -130,6 +132,300 @@ def _open_paper_trade(trade: dict[str, Any], source: str) -> dict[str, Any]:
     return paper_trade
 
 
+def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict[str, Any]:
+    """Load resumable weekend scan state for the current trading date."""
+    try:
+        state = json.loads(WEEKEND_SCAN_STATE_PATH.read_text(encoding="utf-8"))
+        if (
+            state.get("date") == today
+            and state.get("status") in {"RUNNING", "COMPLETED"}
+            and isinstance(state.get("universe"), list)
+            and state.get("universe")
+        ):
+            return state
+    except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError):
+        pass
+
+    return {
+        "date": today,
+        "status": "RUNNING",
+        "next_batch": 0,
+        "total_batches": max(
+            1,
+            (len(universe) + settings.automation_weekend_batch_size - 1)
+            // settings.automation_weekend_batch_size,
+        ),
+        "processed": 0,
+        "skipped_insufficient_history": 0,
+        "technical_errors": 0,
+        "universe": universe,
+        "candidates": [],
+        "started_at": _now_ist().isoformat(),
+        "completed_at": None,
+    }
+
+
+def _save_weekend_scan_state(state: dict[str, Any]) -> None:
+    WEEKEND_SCAN_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    temp_path = WEEKEND_SCAN_STATE_PATH.with_suffix(".tmp")
+    temp_path.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
+    temp_path.replace(WEEKEND_SCAN_STATE_PATH)
+
+
+def _scan_weekend_batch(
+    rows: list[dict[str, Any]],
+    start: str,
+    today: str,
+    min_technical_score: int,
+) -> tuple[list[dict[str, Any]], int, int]:
+    """Scan one bounded batch and return candidates plus data-quality counters."""
+    candidates: list[dict[str, Any]] = []
+    skipped_insufficient_history = 0
+    technical_errors = 0
+
+    def scan_row(row: dict[str, Any]) -> tuple[dict[str, Any] | None, str | None]:
+        try:
+            technical = _analyze_token(row["instrument_key"], start, today, "day")
+            if int(technical.get("score", 0)) >= min_technical_score:
+                return {**row, "technical": technical}, None
+            return None, None
+        except ValueError as exc:
+            if "Insufficient history" in str(exc):
+                return None, "INSUFFICIENT_HISTORY"
+            logger.warning(
+                "[AUTO] technical data-quality skip for %s: %s",
+                row["trading_symbol"],
+                exc,
+            )
+            return None, "TECHNICAL_ERROR"
+        except Exception:
+            logger.exception("[AUTO] technical scan failed for %s", row["trading_symbol"])
+            return None, "TECHNICAL_ERROR"
+
+    with ThreadPoolExecutor(max_workers=settings.automation_weekend_scan_workers) as executor:
+        futures = [executor.submit(scan_row, row) for row in rows]
+        for future in as_completed(futures):
+            candidate, status = future.result()
+            if candidate is not None:
+                candidates.append(candidate)
+            elif status == "INSUFFICIENT_HISTORY":
+                skipped_insufficient_history += 1
+            elif status == "TECHNICAL_ERROR":
+                technical_errors += 1
+
+    return candidates, skipped_insufficient_history, technical_errors
+
+
+def _merge_top_candidates(
+    existing: list[dict[str, Any]],
+    new_candidates: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    merged = {row["instrument_key"]: row for row in existing}
+    for row in new_candidates:
+        key = row["instrument_key"]
+        previous = merged.get(key)
+        if previous is None or int(row["technical"].get("score", 0)) > int(previous["technical"].get("score", 0)):
+            merged[key] = row
+    return sorted(
+        merged.values(),
+        key=lambda row: int(row["technical"].get("score", 0)),
+        reverse=True,
+    )[: settings.automation_max_historical_candidates]
+
+
+def _run_weekend_council(
+    state: dict[str, Any],
+    min_final_rating: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], list[dict[str, Any]]]:
+    technical_candidates = state.get("candidates", [])
+    keys = [row["instrument_key"] for row in technical_candidates]
+    news = _upstox().news(keys)
+    approvals: list[dict[str, Any]] = []
+    paper_orders: list[dict[str, Any]] = []
+    council_results: list[dict[str, Any]] = []
+
+    for row in technical_candidates[: settings.automation_max_ai_candidates]:
+        symbol = row["trading_symbol"].upper()
+        technical = row["technical"]
+        try:
+            result = run_council(
+                symbol=symbol,
+                technical_input=technical,
+                trend_input={
+                    "market_regime": technical.get("market_regime"),
+                    "regime_reasons": technical.get("regime_reasons", []),
+                    "components": technical.get("components", {}),
+                    "latest": technical.get("latest", {}),
+                },
+                deterministic_score=int(technical["score"]),
+                news_input=news.get(row["instrument_key"], []),
+                sentiment_input={},
+            )
+            council_results.append(result.model_dump())
+            if result.council.decision != "BUY_CANDIDATE" or result.final_rating < min_final_rating:
+                continue
+
+            entry, stop, target = _setup(technical)
+            current_exposure, open_positions, daily_realized_loss = _portfolio_state()
+            plan = _risk_plan(
+                entry,
+                stop,
+                target,
+                settings.paper_trading_capital,
+                current_exposure=current_exposure,
+                open_positions=open_positions,
+                daily_realized_loss=daily_realized_loss,
+            )
+            if not plan["eligible_for_paper_trade"]:
+                raise ValueError("Weekend test trade rejected by risk plan")
+
+            trade = {
+                "symbol": symbol,
+                "instrument_key": row["instrument_key"],
+                "rating": int(result.final_rating),
+                "signal": result.council.decision,
+                "market_regime": technical.get("market_regime", "UNKNOWN"),
+                "entry_price": entry,
+                "stop_loss": stop,
+                "target_price": target,
+                "quantity": int(plan["position_size"]),
+                "risk_reward": float(plan["risk_reward"]),
+                "capital_at_risk": float(plan["capital_at_risk"]),
+                "source": "AUTOMATED_WEEKEND_TEST",
+            }
+            if settings.automation_weekend_auto_approve:
+                paper_orders.append(_open_paper_trade(trade, "AUTOMATED_WEEKEND_TEST"))
+            else:
+                approvals.append(
+                    _approval(
+                        symbol,
+                        int(result.final_rating),
+                        technical,
+                        result,
+                        row["instrument_key"],
+                    )
+                )
+        except Exception:
+            logger.exception("[AUTO] council/approval failed for %s", symbol)
+
+    return council_results, approvals, paper_orders
+
+
+def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_final_rating: int) -> dict[str, Any]:
+    universe = _universe()
+    state = _load_weekend_scan_state(today.isoformat(), universe)
+
+    if state["status"] == "COMPLETED":
+        return _build_weekend_scan_result(
+            state,
+            min_technical_score,
+            min_final_rating,
+            council_results=state.get("council_results", []),
+            approvals=state.get("approvals", []),
+            paper_orders=state.get("paper_orders", []),
+            status="COMPLETED",
+        )
+
+    batch_size = settings.automation_weekend_batch_size
+    batch_index = int(state.get("next_batch", 0))
+    start_index = batch_index * batch_size
+    rows = state["universe"][start_index:start_index + batch_size]
+
+    candidates, skipped, errors = _scan_weekend_batch(
+        rows,
+        start,
+        today.isoformat(),
+        min_technical_score,
+    )
+    state["processed"] = min(len(state["universe"]), start_index + len(rows))
+    state["skipped_insufficient_history"] = int(state.get("skipped_insufficient_history", 0)) + skipped
+    state["technical_errors"] = int(state.get("technical_errors", 0)) + errors
+    state["candidates"] = _merge_top_candidates(state.get("candidates", []), candidates)
+    state["next_batch"] = batch_index + 1
+
+    if state["next_batch"] < int(state["total_batches"]):
+        _save_weekend_scan_state(state)
+        result = _build_weekend_scan_result(
+            state,
+            min_technical_score,
+            min_final_rating,
+            council_results=[],
+            approvals=[],
+            paper_orders=[],
+            status="BATCH_COMPLETE",
+        )
+        global _last_scan
+        _last_scan = result
+        return result
+
+    state["status"] = "COMPLETED"
+    state["completed_at"] = _now_ist().isoformat()
+    council_results, approvals, paper_orders = _run_weekend_council(state, min_final_rating)
+    state["council_results"] = council_results
+    state["approvals"] = approvals
+    state["paper_orders"] = paper_orders
+    _save_weekend_scan_state(state)
+    result = _build_weekend_scan_result(
+        state,
+        min_technical_score,
+        min_final_rating,
+        council_results=council_results,
+        approvals=approvals,
+        paper_orders=paper_orders,
+        status="COMPLETED",
+    )
+    _last_scan = result
+    return result
+
+
+def _build_weekend_scan_result(
+    state: dict[str, Any],
+    min_technical_score: int,
+    min_final_rating: int,
+    council_results: list[dict[str, Any]],
+    approvals: list[dict[str, Any]],
+    paper_orders: list[dict[str, Any]],
+    status: str,
+) -> dict[str, Any]:
+    return {
+        "status": status,
+        "mode": "PAPER",
+        "window_status": "WEEKEND_TEST",
+        "ist_time": _now_ist().isoformat(),
+        "paper_trading_capital": settings.paper_trading_capital,
+        "execution_enabled": False,
+        "date": state["date"],
+        "universe_ranked": len(state["universe"]),
+        "universe_scope": "FULL_NSE_EQ_NORMAL",
+        "batch_size": settings.automation_weekend_batch_size,
+        "current_batch": int(state.get("next_batch", 0)),
+        "total_batches": int(state["total_batches"]),
+        "processed": int(state.get("processed", 0)),
+        "skipped_insufficient_history": int(state.get("skipped_insufficient_history", 0)),
+        "technical_errors": int(state.get("technical_errors", 0)),
+        "technical_candidates": len(state.get("candidates", [])),
+        "ai_candidates": len(council_results),
+        "approvals_sent": len(approvals),
+        "approvals": approvals,
+        "paper_orders_opened": len(paper_orders),
+        "paper_orders": paper_orders,
+        "weekend_test_mode": settings.automation_weekend_test_mode,
+        "weekend_auto_approve": settings.automation_weekend_auto_approve,
+        "min_technical_score_used": min_technical_score,
+        "min_final_rating_used": min_final_rating,
+        "council_results": council_results,
+        "top_technical": [
+            {
+                "symbol": row["trading_symbol"],
+                "technical_score": int(row["technical"].get("score", 0)),
+                "signal": row["technical"].get("signal"),
+                "market_regime": row["technical"].get("market_regime"),
+            }
+            for row in state.get("candidates", [])
+        ],
+    }
+
+
 def _setup(technical: dict[str, Any]) -> tuple[float, float, float]:
     latest = technical.get("latest", {})
     entry = float(latest.get("close") or 0)
@@ -194,6 +490,13 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
 
     today = _now_ist().date()
     start = (today - timedelta(days=365)).isoformat()
+    if window_status == "WEEKEND_TEST":
+        return _weekend_daily_scan(
+            today,
+            start,
+            settings.automation_weekend_min_technical_score,
+            settings.automation_weekend_min_final_rating,
+        )
     universe = _universe()
     technical_candidates = []
     min_technical_score = (
@@ -391,6 +694,7 @@ def status() -> dict[str, Any]:
         "paper_trading_capital": settings.paper_trading_capital,
         "weekend_test_mode": settings.automation_weekend_test_mode,
         "weekend_auto_approve": settings.automation_weekend_auto_approve,
+        "weekend_batch_size": settings.automation_weekend_batch_size,
         "last_scan": _last_scan,
         "open_paper_trades": sum(1 for t in _paper_trades.values() if t.get("status") == "OPEN"),
         "closed_paper_trades": sum(1 for t in _paper_trades.values() if str(t.get("status", "")).startswith("CLOSED_")),

@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    modelx_version: str = "0.5.1-SNAPSHOT"
+    modelx_version: str = "0.5.2-SNAPSHOT"
     app_env: str = "development"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
@@ -57,6 +57,7 @@ class Settings(BaseSettings):
     automation_weekend_test_mode: bool = True
     automation_weekend_auto_approve: bool = True
     automation_weekend_scan_workers: int = 4
+    automation_weekend_batch_size: int = 100
     # Lower thresholds are isolated to weekend testing; normal automation remains at 70.
     automation_weekend_min_technical_score: int = 40
     automation_weekend_min_final_rating: int = 40
