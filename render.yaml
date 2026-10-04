@@ -1,7 +1,7 @@
 services:
   - type: web
     name: modelx-poc
-    branch: phase-6-paperTrade-testing
+    branch: main
     runtime: python
     plan: free
     region: singapore
@@ -30,7 +30,7 @@ services:
       - key: AUTOMATION_WEEKEND_AUTO_APPROVE
         value: "false"
       - key: AI_PROVIDER
-        value: gemini
+        value: bluesminds
       - key: AI_FALLBACK_PROVIDER
         value: ""
       - key: GEMINI_API_KEY
@@ -44,17 +44,17 @@ services:
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gemini-3.8-flash
+        value: gpt-4o-mini
       - key: AI_TECHNICAL_MODEL
-        value: gemini-3.8-flash
+        value: gpt-4o-mini
       - key: AI_TREND_MODEL
-        value: gemini-3.8-flash
+        value: gpt-4o-mini
       - key: AI_NEWS_MODEL
-        value: gemini-3.8-flash
+        value: gpt-4o-mini
       - key: AI_SENTIMENT_MODEL
-        value: gemini-3.8-flash
+        value: gpt-4o-mini
       - key: AI_REASONING_MODEL
-        value: gemini-3.8-flash
+        value: gpt-4o-mini
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
