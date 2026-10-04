@@ -61,13 +61,55 @@ def _build_model(provider: str, model_name: str):
     raise RuntimeError(f"Unsupported AI provider: {provider}. Supported providers: gemini, bluesminds.")
 
 
+def _parse_bluesminds_json(response: Any, schema):
+    """Parse BluesMinds JSON text and validate it with the existing Pydantic schema."""
+    content = getattr(response, "content", response)
+    if isinstance(content, list):
+        content = "".join(
+            item.get("text", "") if isinstance(item, dict) else str(item)
+            for item in content
+        )
+    text = str(content).strip()
+
+    # Some gateways/models wrap JSON in markdown fences or add a short sentence
+    # before/after it. Extract the outer JSON object and validate it with Pydantic.
+    start = text.find("{")
+    end = text.rfind("}")
+    if start >= 0 and end > start:
+        text = text[start:end + 1]
+
+    try:
+        return schema.model_validate_json(text)
+    except Exception as exc:
+        raise RuntimeError(
+            f"BluesMinds returned invalid JSON for {schema.__name__}: {exc}"
+        ) from exc
+
+
 def _invoke_once(provider: str, model_name: str, system: str, payload: dict[str, Any], schema):
     model = _build_model(provider, model_name)
-    chain = model.with_structured_output(schema)
-    return chain.invoke([
+    messages = [
         ("system", system),
         ("human", json.dumps(payload, default=str, ensure_ascii=False)),
-    ])
+    ]
+
+    if provider.strip().lower() == "bluesminds":
+        # BluesMinds exposes an OpenAI-compatible gateway, but the Gemini model
+        # behind the gateway may reject LangChain tool/function structured output
+        # with HTTP 400. Use plain JSON text here and validate locally against
+        # the same Pydantic schema.
+        response = model.invoke(messages + [
+            (
+                "system",
+                "Return ONLY one valid JSON object matching the requested output "
+                "schema. Do not use markdown fences, commentary, or extra text. "
+                "The response must be valid JSON.",
+            ),
+        ])
+        return _parse_bluesminds_json(response, schema)
+
+    chain = model.with_structured_output(schema)
+    return chain.invoke(messages)
 
 
 def _invoke(model_name: str, system: str, payload: dict[str, Any], schema):
