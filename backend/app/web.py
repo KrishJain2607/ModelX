@@ -193,6 +193,7 @@ PAGE = """<!doctype html>
         <div class="kpi-card accent-green"><div class="kpi-label">Open trades</div><div class="kpi-value" id="kpiOpen">—</div><div class="kpi-foot" id="kpiOpenNote">Maximum configured positions</div></div>
         <div class="kpi-card accent-amber"><div class="kpi-label">Realised P&amp;L</div><div class="kpi-value" id="kpiPnl">—</div><div class="kpi-foot" id="kpiPnlNote">Closed trades only</div></div>
         <div class="kpi-card accent-red"><div class="kpi-label">Capital at risk</div><div class="kpi-value" id="kpiRisk">—</div><div class="kpi-foot">If all open stops are hit</div></div>
+        <div class="kpi-card accent-blue"><div class="kpi-label">Last successful workflow</div><div class="kpi-value" id="kpiWorkflow">—</div><div class="kpi-foot" id="kpiWorkflowFoot">Checking GitHub Actions…</div></div>
       </div>
       <div class="dashboard-grid">
         <div class="panel"><div class="panel-title"><span>Portfolio utilisation</span><span id="utilisationLabel">—</span></div><div class="big-progress"><div id="utilisationBar"></div></div><div class="mini-grid">
@@ -290,6 +291,31 @@ async function loadAutomation(button){
     document.getElementById('autoRules').innerHTML=weekend?'<div class="rule"><strong>1 · Technical screen</strong><br>At least <strong>'+wt+'/100</strong> technical evidence.</div><div class="rule"><strong>2 · AI judgement</strong><br>BUY candidates need <strong>'+wf+'/100</strong> or higher.</div><div class="rule"><strong>3 · Risk gate</strong><br>Position size, exposure, open positions and daily loss limits must pass.</div><div class="rule"><strong>WATCH exception</strong><br>AI and technical evidence must both reach <strong>'+ww+'/100</strong>.</div>':'<div class="rule"><strong>Normal automation</strong><br>Technical '+data.min_technical_score+'/100 · Final rating '+data.min_final_rating+'/100.</div>';
     const cycle=last.status==='COMPLETED'?'Scan complete':last.status==='BATCH_COMPLETE'?'Batch complete — continuing automatically':'No completed autonomous cycle yet';document.getElementById('lastUpdated').textContent=last.ist_time?'Last update · '+new Date(last.ist_time).toLocaleString('en-IN'):'Waiting for first scan';setStatus('automationStatus',cycle+' · '+(last.window_status||'—'),last.status==='COMPLETED'||last.status==='BATCH_COMPLETE'?'success':'active');show('automationRaw',data);
   }catch(e){setStatus('automationStatus',e.message||'Automation status failed','error');toast(e.message||'Automation status failed','error')}finally{if(button)setBusy(button,false)}
+}
+
+async function loadWorkflowStatus(){
+  const value=document.getElementById('kpiWorkflow');
+  const foot=document.getElementById('kpiWorkflowFoot');
+  if(!value||!foot)return;
+  try{
+    const r=await fetch('https://api.github.com/repos/KrishJain2607/ModelX/actions/runs?workflow_id=367517727&branch=main&status=success&per_page=1',{headers:{Accept:'application/vnd.github+json'}});
+    if(!r.ok)throw new Error('GitHub Actions status unavailable');
+    const data=await r.json();
+    const run=data.workflow_runs?.[0];
+    if(!run){
+      value.textContent='—';
+      foot.textContent='No successful run found';
+      return;
+    }
+    const dt=new Date(run.updated_at||run.run_started_at||run.created_at);
+    value.textContent=dt.toLocaleTimeString('en-IN',{hour:'2-digit',minute:'2-digit',hour12:true});
+    const trigger=run.event==='schedule'?'Scheduled':'Manual';
+    foot.textContent=trigger+' · '+dt.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+    value.title='Run #'+run.run_number+' · '+trigger+' · '+dt.toLocaleString('en-IN');
+  }catch(e){
+    value.textContent='—';
+    foot.textContent='GitHub Actions check failed';
+  }
 }
 
 async function loadHealth(button) {
@@ -482,7 +508,9 @@ async function emailScan(button){
 loadHealth();
 loadPaperTrades();
 loadAutomation();
+loadWorkflowStatus();
 setInterval(loadAutomation, 30000);
+setInterval(loadWorkflowStatus, 30000);
 </script>
 </body>
 </html>
