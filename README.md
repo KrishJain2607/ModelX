@@ -12,7 +12,7 @@ ModelX uses semantic-style deployment versions:
 
 ## Current stage
 
-**V0 POC / development only.** ModelX is hosted as a read-only web application, connects to Kite for market data, and calculates deterministic technical signals in memory. No database and no live trading are used in this iteration.
+**V0 POC / development only.** ModelX is hosted as a paper-trading web application, uses SQLite for application state, connects to Kite/Upstox for market data, and keeps live trading disabled.
 
 ## Hosted POC
 
@@ -42,7 +42,7 @@ Kite authentication -> market data -> indicators -> deterministic strategy score
 
 Weekend test mode is paper-only. It scans the complete eligible NSE equity universe using historical daily candles, applies isolated test thresholds, and may auto-open paper trades. A BUY_CANDIDATE can pass the weekend rating gate; additionally, a WATCH can be promoted only for weekend paper testing when both the AI final rating and deterministic technical score are at least 70/100. This WATCH promotion is test-only and never changes normal automation. It never enables live broker execution.
 
-Weekend scanning is resumable in bounded batches (default 100 symbols per cycle). Each cycle persists its scan cursor and top technical candidates to the Render instance so a single HTTP request never attempts the full universe. Insufficient-history symbols are counted as normal data-quality skips instead of producing traceback noise. The current POC persistence is instance-local; durable PostgreSQL storage remains a later phase.
+Weekend scanning is resumable in bounded batches (default 100 symbols per cycle). Each cycle persists its scan cursor and top technical candidates to the Render instance so a single HTTP request never attempts the full universe. Insufficient-history symbols are counted as normal data-quality skips instead of producing traceback noise. Paper trades, approvals, automation scan state, and the latest automation result are persisted in SQLite. On Render, the SQLite file must live under a paid persistent-disk mount (the Blueprint uses `/var/data/modelx.db`); the Free service filesystem remains ephemeral.
 
 ## Next iterations
 

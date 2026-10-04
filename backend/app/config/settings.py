@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 class Settings(BaseSettings):
     modelx_version: str = "0.5.12-SNAPSHOT"
     app_env: str = "development"
+    # Override on hosted deployments with a path on persistent storage.
     database_path: str = "data/modelx.db"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
