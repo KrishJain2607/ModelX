@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime, timezone
 from email.message import EmailMessage
 from math import floor
 import smtplib
@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.broker import KiteConfig, KiteReadOnlyClient
 from app.config.settings import settings
+from app.database import load_paper_trades, save_paper_trade
 from app.database import load_paper_trades, save_paper_trade
 from app.indicators.technical import calculate_indicators, score_latest
 from app.market_data.upstox import UpstoxMarketDataClient

@@ -59,6 +59,10 @@ def init_db() -> None:
         )
 
 
+# Initialize before modules that load persisted state at import time.
+init_db()
+
+
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 

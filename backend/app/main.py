@@ -1,4 +1,6 @@
 from fastapi import FastAPI
+
+from app.database import init_db
 from fastapi.responses import RedirectResponse
 
 from app.api.analysis import router as analysis_router
@@ -8,7 +10,7 @@ from app.api.ai import router as ai_router
 from app.api.automation import router as automation_router
 from app.api.market import router as market_router
 from app.config.settings import settings
-from app.database import database_status, init_db
+from app.database import database_status
 from app.web import page
 
 init_db()
