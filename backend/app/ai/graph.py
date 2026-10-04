@@ -79,7 +79,18 @@ def _parse_bluesminds_json(response: Any, schema):
         text = text[start:end + 1]
 
     try:
-        return schema.model_validate_json(text)
+        data = json.loads(text)
+        if schema is CouncilDecision and isinstance(data, dict) and not str(data.get("reasoning", "")).strip():
+            # Some open-weight models occasionally omit a long free-form field
+            # even when all decision fields are present. Preserve the decision
+            # and construct a concise audit trail from fields the model did return.
+            evidence = "; ".join(str(x) for x in data.get("strongest_evidence", [])[:3])
+            data["reasoning"] = (
+                f"Bull case: {data.get("bull_case", "")} "
+                f"Bear case: {data.get("bear_case", "")} "
+                f"Key evidence: {evidence}"
+            ).strip()[:2000]
+        return schema.model_validate(data)
     except Exception as exc:
         raise RuntimeError(
             f"BluesMinds returned invalid JSON for {schema.__name__}: {exc}"
