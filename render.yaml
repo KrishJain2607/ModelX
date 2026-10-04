@@ -30,6 +30,10 @@ services:
         sync: false
       - key: GOOGLE_API_KEY
         sync: false
+      - key: BLUESMINDS_API_KEY
+        sync: false
+      - key: BLUESMINDS_BASE_URL
+        value: https://api.bluesminds.com/v1
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
