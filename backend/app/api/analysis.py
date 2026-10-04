@@ -10,13 +10,14 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.broker import KiteConfig, KiteReadOnlyClient
 from app.config.settings import settings
+from app.database import load_paper_trades, save_paper_trade
 from app.indicators.technical import calculate_indicators, score_latest
 from app.market_data.upstox import UpstoxMarketDataClient
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 MAX_SCAN_SYMBOLS = 10
-_paper_trades: dict[str, dict] = {}
+_paper_trades: dict[str, dict] = load_paper_trades()
 
 
 def _kite() -> KiteReadOnlyClient:
@@ -235,7 +236,7 @@ def risk_plan(
 def list_paper_trades() -> dict[str, object]:
     return {
         "execution_enabled": False,
-        "persistence_enabled": False,
+        "persistence_enabled": True,
         "trades": list(_paper_trades.values()),
     }
 
@@ -295,6 +296,7 @@ def open_paper_trade(
         "planned_risk_reward": plan["risk_reward"],
     }
     _paper_trades[trade_id] = trade
+    save_paper_trade(trade)
     return {"execution_enabled": False, "trade": trade, "risk_plan": plan}
 
 
@@ -394,6 +396,7 @@ def mark_paper_trade(trade_id: str, price: float = Query(..., gt=0)) -> dict[str
         trade["exit_price"] = exit_price
         trade["realized_pnl"] = (exit_price - trade["entry_price"]) * trade["quantity"]
         trade["status"] = f"CLOSED_{reason}"
+        save_paper_trade(trade)
 
     return {"execution_enabled": False, "trade": trade}
 
