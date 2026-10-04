@@ -2,6 +2,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    modelx_version: str = "0.5.13-SNAPSHOT"
+    database_path: str = "data/modelx.db"
     app_env: str = "development"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
@@ -51,6 +53,13 @@ class Settings(BaseSettings):
     automation_max_ai_candidates: int = 3
     automation_min_technical_score: int = 70
     automation_min_final_rating: int = 70
+    automation_weekend_test_mode: bool = True
+    automation_weekend_auto_approve: bool = False
+    automation_weekend_scan_workers: int = 4
+    automation_weekend_batch_size: int = 100
+    automation_weekend_min_technical_score: int = 40
+    automation_weekend_min_final_rating: int = 40
+    automation_weekend_watch_trade_min_rating: int = 70
 
     def approval_recipients(self) -> list[str]:
         return [item.strip().lower() for item in self.alert_to_email.split(",") if item.strip()]
