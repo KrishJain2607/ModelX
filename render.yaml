@@ -1,6 +1,7 @@
 services:
   - type: web
     name: modelx-poc
+    branch: phase-6-paperTrade-testing
     runtime: python
     plan: free
     region: singapore
@@ -75,6 +76,8 @@ services:
       - key: PUBLIC_BASE_URL
         value: https://modelx-poc.onrender.com
       - key: APPROVAL_SECRET
+        sync: false
+      - key: AUTOMATION_SECRET
         sync: false
       - key: EXECUTION_GATEWAY_URL
         sync: false
