@@ -9,9 +9,10 @@ from typing import Any
 from uuid import uuid4
 
 from app.config.settings import settings
+from app.database import load_approvals, save_approval
 
 
-_APPROVALS: dict[str, dict[str, Any]] = {}
+_APPROVALS: dict[str, dict[str, Any]] = load_approvals()
 
 
 def _b64(value: bytes) -> str:
@@ -41,6 +42,7 @@ def create_approval(trade: dict[str, Any]) -> tuple[str, dict[str, Any]]:
         "expires_at": expires_at.isoformat(),
     }
     _APPROVALS[approval_id] = record
+    save_approval(record)
 
     payload = _b64(json.dumps(
         {
@@ -85,6 +87,7 @@ def resolve(token: str, decision: str, recipient: str | None = None) -> dict[str
             "expires_at": datetime.fromtimestamp(int(data["exp"]), timezone.utc).isoformat(),
         }
         _APPROVALS[data["approval_id"]] = record
+        save_approval(record)
 
     if record["status"] in {"EXECUTED", "EXECUTION_FAILED", "REJECTED", "EXPIRED"}:
         return record
@@ -92,6 +95,7 @@ def resolve(token: str, decision: str, recipient: str | None = None) -> dict[str
     if decision == "reject":
         record["rejected_by"].append((recipient or "shared-approval-link").lower())
         record["status"] = "REJECTED"
+        save_approval(record)
         return record
 
     if decision != "approve":
@@ -99,6 +103,7 @@ def resolve(token: str, decision: str, recipient: str | None = None) -> dict[str
 
     record["status"] = "APPROVED"
     record["approved_by"] = (recipient or "shared-approval-link").lower()
+    save_approval(record)
     return record
 
 
@@ -110,6 +115,7 @@ def mark_executed(approval_id: str, execution: dict[str, Any]) -> dict[str, Any]
     record = _APPROVALS[approval_id]
     record["status"] = "EXECUTED"
     record["execution"] = execution
+    save_approval(record)
     return record
 
 
@@ -117,4 +123,5 @@ def mark_execution_failed(approval_id: str, error: str) -> dict[str, Any]:
     record = _APPROVALS[approval_id]
     record["status"] = "EXECUTION_FAILED"
     record["execution_error"] = error
+    save_approval(record)
     return record
