@@ -23,7 +23,7 @@ from app.database import load_state, save_state, save_paper_trade
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/automation", tags=["automation"])
-_last_scan: dict[str, Any] = {"status": "NOT_RUN", "candidates": [], "approvals": []}
+_last_scan: dict[str, Any] = load_state("automation:last_scan") or {"status": "NOT_RUN", "candidates": [], "approvals": []}
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
 WEEKEND_SCAN_STATE_KEY_PREFIX = "weekend_scan:"
 WEEKEND_SCAN_STATE_VERSION = "0.5.4"
@@ -527,6 +527,7 @@ def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_f
         )
         global _last_scan
         _last_scan = result
+        save_state("automation:last_scan", result)
         return result
 
     state["status"] = "COMPLETED"
@@ -545,6 +546,7 @@ def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_f
         status="COMPLETED",
     )
     _last_scan = result
+    save_state("automation:last_scan", result)
     return result
 
 
