@@ -1,0 +1,87 @@
+services:
+  - type: web
+    name: modelx-poc
+    branch: phase-6-paperTrade-testing
+    runtime: python
+    plan: free
+    region: singapore
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: LIVE_TRADING_ENABLED
+        value: "false"
+      - key: DATABASE_PATH
+        value: data/modelx.db
+      - key: MARKET_DATA_PROVIDER
+        value: upstox
+      - key: BROKER_API_KEY
+        sync: false
+      - key: BROKER_API_SECRET
+        sync: false
+      - key: BROKER_ACCESS_TOKEN
+        sync: false
+      - key: UPSTOX_ANALYTICS_TOKEN
+        sync: false
+      - key: AUTOMATION_WEEKEND_TEST_MODE
+        value: "true"
+      - key: AUTOMATION_WEEKEND_AUTO_APPROVE
+        value: "false"
+      - key: AI_PROVIDER
+        value: gemini
+      - key: AI_FALLBACK_PROVIDER
+        value: ""
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
+      - key: BLUESMINDS_API_KEY
+        sync: false
+      - key: BLUESMINDS_BASE_URL
+        value: https://api.bluesminds.com/v1
+      - key: AI_API_KEY
+        sync: false
+      - key: AI_MODEL
+        value: gemini-3.8-flash
+      - key: AI_TECHNICAL_MODEL
+        value: gemini-3.8-flash
+      - key: AI_TREND_MODEL
+        value: gemini-3.8-flash
+      - key: AI_NEWS_MODEL
+        value: gemini-3.8-flash
+      - key: AI_SENTIMENT_MODEL
+        value: gemini-3.8-flash
+      - key: AI_REASONING_MODEL
+        value: gemini-3.8-flash
+      - key: SMTP_HOST
+        value: smtp.gmail.com
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        value: krishjain2607@gmail.com
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: brevo
+      - key: BREVO_API_KEY
+        sync: false
+      - key: EMAIL_SENDER
+        value: krishjain2607@gmail.com
+      - key: ALERT_FROM_EMAIL
+        value: krishjain2607@gmail.com
+      - key: ALERT_TO_EMAIL
+        value: krishjain2607@gmail.com,sakshigairola65@gmail.com
+      - key: PUBLIC_BASE_URL
+        value: https://modelx-poc.onrender.com
+      - key: APPROVAL_SECRET
+        sync: false
+      - key: AUTOMATION_SECRET
+        sync: false
+      - key: EXECUTION_GATEWAY_URL
+        sync: false
+      - key: EXECUTION_GATEWAY_SECRET
+        sync: false
+      - key: EXECUTION_GATEWAY_TIMEOUT_SECONDS
+        value: "15"
