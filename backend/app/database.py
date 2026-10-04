@@ -144,3 +144,9 @@ def database_status() -> dict[str, Any]:
         "approvals": approval_count,
         "state_records": state_count,
     }
+
+
+# Initialize the schema as soon as the database module is imported. Several modules
+# hydrate their in-memory caches during import, so they must never query an
+# uninitialized SQLite file.
+init_db()
