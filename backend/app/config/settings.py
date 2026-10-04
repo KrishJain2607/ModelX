@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    modelx_version: str = "0.5.13-SNAPSHOT"
+    modelx_version: str = "1.0.0"
     database_path: str = "data/modelx.db"
     app_env: str = "development"
     live_trading_enabled: bool = False
