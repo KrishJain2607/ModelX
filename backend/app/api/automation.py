@@ -7,7 +7,6 @@ import time
 from threading import Lock
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date, datetime, timedelta
-from pathlib import Path
 from uuid import uuid4
 from zoneinfo import ZoneInfo
 from typing import Any
@@ -20,13 +19,18 @@ from app.api.analysis import _analyze_token, _paper_trades, _risk_plan, _upstox,
 from app.api.approvals import _approval_email, _send_html
 from app.approvals import create_approval
 from app.config.settings import settings
+from app.database import load_state, save_paper_trade, save_state
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/automation", tags=["automation"])
-_last_scan: dict[str, Any] = {"status": "NOT_RUN", "candidates": [], "approvals": []}
+_last_scan: dict[str, Any] = load_state("automation:last_scan") or {
+    "status": "NOT_RUN",
+    "candidates": [],
+    "approvals": [],
+}
 INSTRUMENTS_URL = "https://assets.upstox.com/market-quote/instruments/exchange/NSE.json.gz"
-WEEKEND_SCAN_STATE_PATH = Path("data/modelx_weekend_scan_state.json")
-WEEKEND_SCAN_STATE_VERSION = "0.5.4"
+WEEKEND_SCAN_STATE_KEY_PREFIX = "automation:weekend_scan:"
+WEEKEND_SCAN_STATE_VERSION = "0.5.7"
 AI_CALL_LOCK = Lock()
 AI_LAST_CALL_AT = 0.0
 AI_MIN_INTERVAL_SECONDS = 2.0
@@ -131,6 +135,7 @@ def _open_paper_trade(trade: dict[str, Any], source: str) -> dict[str, Any]:
         "source": source,
     }
     _paper_trades[trade_id] = paper_trade
+    save_paper_trade(paper_trade)
     logger.info(
         "[PAPER-WEEKEND] Trade opened: id=%s symbol=%s qty=%s entry=%.2f sl=%.2f target=%.2f",
         trade_id, trade["symbol"], quantity, entry, stop, target,
@@ -139,19 +144,17 @@ def _open_paper_trade(trade: dict[str, Any], source: str) -> dict[str, Any]:
 
 
 def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict[str, Any]:
-    """Load resumable weekend scan state for the current trading date."""
-    try:
-        state = json.loads(WEEKEND_SCAN_STATE_PATH.read_text(encoding="utf-8"))
-        if (
-            state.get("version") == WEEKEND_SCAN_STATE_VERSION
-            and state.get("date") == today
-            and state.get("status") in {"RUNNING", "COMPLETED"}
-            and isinstance(state.get("universe"), list)
-            and state.get("universe")
-        ):
-            return state
-    except (FileNotFoundError, OSError, json.JSONDecodeError, TypeError):
-        pass
+    """Load resumable weekend scan state from SQLite for the current trading date."""
+    state = load_state(f"{WEEKEND_SCAN_STATE_KEY_PREFIX}{today}")
+    if (
+        isinstance(state, dict)
+        and state.get("version") == WEEKEND_SCAN_STATE_VERSION
+        and state.get("date") == today
+        and state.get("status") in {"RUNNING", "COMPLETED"}
+        and isinstance(state.get("universe"), list)
+        and state.get("universe")
+    ):
+        return state
 
     return {
         "version": WEEKEND_SCAN_STATE_VERSION,
@@ -183,10 +186,8 @@ def _load_weekend_scan_state(today: str, universe: list[dict[str, Any]]) -> dict
 
 
 def _save_weekend_scan_state(state: dict[str, Any]) -> None:
-    WEEKEND_SCAN_STATE_PATH.parent.mkdir(parents=True, exist_ok=True)
-    temp_path = WEEKEND_SCAN_STATE_PATH.with_suffix(".tmp")
-    temp_path.write_text(json.dumps(state, separators=(",", ":")), encoding="utf-8")
-    temp_path.replace(WEEKEND_SCAN_STATE_PATH)
+    """Persist resumable weekend scan state in SQLite."""
+    save_state(f"{WEEKEND_SCAN_STATE_KEY_PREFIX}{state['date']}", state)
 
 
 def _scan_weekend_batch(
@@ -531,6 +532,7 @@ def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_f
         )
         global _last_scan
         _last_scan = result
+        save_state("automation:last_scan", _last_scan)
         return result
 
     state["status"] = "COMPLETED"
@@ -549,6 +551,7 @@ def _weekend_daily_scan(today: date, start: str, min_technical_score: int, min_f
         status="COMPLETED",
     )
     _last_scan = result
+    save_state("automation:last_scan", _last_scan)
     return result
 
 
@@ -810,6 +813,7 @@ def daily_scan(x_modelx_automation_secret: str | None = Header(default=None)) ->
             for row in technical_candidates
         ],
     }
+    save_state("automation:last_scan", _last_scan)
     return _last_scan
 
 
@@ -854,6 +858,7 @@ def paper_monitor(x_modelx_automation_secret: str | None = Header(default=None))
             trade["realized_pnl"] = (exit_price - float(trade["entry_price"])) * int(trade["quantity"])
             trade["status"] = f"CLOSED_{reason}"
             trade["closed_at"] = now.isoformat()
+            save_paper_trade(trade)
             closed.append({"trade_id": trade["trade_id"], "symbol": trade["symbol"], "reason": reason, "exit_price": exit_price, "realized_pnl": trade["realized_pnl"]})
 
     return {
