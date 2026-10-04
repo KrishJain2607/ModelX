@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    modelx_version: str = "0.5.9-SNAPSHOT"
+    modelx_version: str = "0.5.10-SNAPSHOT"
     app_env: str = "development"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
@@ -58,7 +58,7 @@ class Settings(BaseSettings):
     # Weekend paper-test mode uses the latest completed daily candle instead of live quotes.
     # It is paper-only and must never enable live broker execution.
     automation_weekend_test_mode: bool = True
-    automation_weekend_auto_approve: bool = True
+    automation_weekend_auto_approve: bool = False
     automation_weekend_scan_workers: int = 4
     automation_weekend_batch_size: int = 100
     # Lower thresholds are isolated to weekend testing; normal automation remains at 70.

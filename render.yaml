@@ -22,6 +22,8 @@ services:
         sync: false
       - key: UPSTOX_ANALYTICS_TOKEN
         sync: false
+      - key: AUTOMATION_WEEKEND_AUTO_APPROVE
+        value: "false"
       - key: AI_PROVIDER
         value: gemini
       - key: AI_FALLBACK_PROVIDER
