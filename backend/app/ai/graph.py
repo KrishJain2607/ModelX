@@ -5,6 +5,7 @@ import logging
 from typing import Any, TypedDict
 
 from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.graph import END, START, StateGraph
 
 from app.ai.prompts import COUNCIL_SYSTEM, DEVIL_SYSTEM, RESEARCH_SYSTEM
@@ -44,7 +45,19 @@ def _build_model(provider: str, model_name: str):
             thinking_level="low",
         )
 
-    raise RuntimeError(f"Unsupported AI provider: {provider}. ModelX is configured for Gemini only.")
+    if provider in {"bluesminds", "blueminds"}:
+        api_key = settings.bluesminds_api_key or settings.ai_api_key
+        if not api_key:
+            raise RuntimeError("BluesMinds API key is not configured")
+        base_url = (settings.bluesminds_base_url or "https://api.bluesminds.com/v1").rstrip("/")
+        return ChatOpenAI(
+            api_key=api_key,
+            base_url=base_url,
+            model=selected_model,
+            temperature=0,
+        )
+
+    raise RuntimeError(f"Unsupported AI provider: {provider}")
 
 
 def _invoke_once(provider: str, model_name: str, system: str, payload: dict[str, Any], schema):
