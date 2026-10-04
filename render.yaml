@@ -28,9 +28,21 @@ services:
         value: ""
       - key: GEMINI_API_KEY
         sync: false
+      - key: GOOGLE_API_KEY
+        sync: false
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
+        value: gemini-3.8-flash
+      - key: AI_TECHNICAL_MODEL
+        value: gemini-3.8-flash
+      - key: AI_TREND_MODEL
+        value: gemini-3.8-flash
+      - key: AI_NEWS_MODEL
+        value: gemini-3.8-flash
+      - key: AI_SENTIMENT_MODEL
+        value: gemini-3.8-flash
+      - key: AI_REASONING_MODEL
         value: gemini-3.8-flash
       - key: SMTP_HOST
         value: smtp.gmail.com

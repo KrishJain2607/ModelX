@@ -2,7 +2,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
-    modelx_version: str = "0.5.4-SNAPSHOT"
+    modelx_version: str = "0.5.5-SNAPSHOT"
     app_env: str = "development"
     live_trading_enabled: bool = False
     broker_api_key: str = ""
@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     ai_fallback_provider: str = ""
     ai_api_key: str = ""
     gemini_api_key: str = ""
+    google_api_key: str = ""
     ai_model: str = "gemini-3.8-flash"
     ai_technical_model: str = "gemini-3.8-flash"
     ai_trend_model: str = "gemini-3.8-flash"

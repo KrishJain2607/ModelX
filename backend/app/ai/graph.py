@@ -33,7 +33,9 @@ def _build_model(provider: str, model_name: str):
         raise RuntimeError("AI model is not configured")
 
     if provider == "gemini":
-        api_key = settings.gemini_api_key or settings.ai_api_key
+        # GEMINI_API_KEY is the preferred ModelX secret. GOOGLE_API_KEY is
+        # supported as a compatibility fallback for Google's SDK conventions.
+        api_key = settings.gemini_api_key or settings.google_api_key or settings.ai_api_key
         if not api_key:
             raise RuntimeError("Gemini API key is not configured")
         if selected_model.lower().startswith(("gpt-", "o1-", "o3-", "o4-")):
