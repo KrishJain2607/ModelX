@@ -3,7 +3,7 @@ name: ModelX Automated Paper Loop
 on:
   workflow_dispatch:
   schedule:
-    - cron: "*/30 * * * *"
+    - cron: "17,47 * * * *"
 
 permissions:
   contents: read
