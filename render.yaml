@@ -44,17 +44,17 @@ services:
       - key: AI_API_KEY
         sync: false
       - key: AI_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: AI_TECHNICAL_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: AI_TREND_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: AI_NEWS_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: AI_SENTIMENT_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: AI_REASONING_MODEL
-        value: gpt-4o-mini
+        value: openai/gpt-oss-20b
       - key: SMTP_HOST
         value: smtp.gmail.com
       - key: SMTP_PORT
