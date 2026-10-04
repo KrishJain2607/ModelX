@@ -8,7 +8,10 @@ from app.api.ai import router as ai_router
 from app.api.automation import router as automation_router
 from app.api.market import router as market_router
 from app.config.settings import settings
+from app.database import database_status, init_db
 from app.web import page
+
+init_db()
 
 app = FastAPI(title="ModelX", version=settings.modelx_version)
 app.include_router(broker_router, prefix="/api")
@@ -38,5 +41,6 @@ def health() -> dict[str, object]:
         "ai_framework": "langgraph",
         "automation_enabled": bool(settings.automation_secret),
         "automation_mode": "PAPER",
-        "persistence_enabled": False,
+        "persistence_enabled": True,
+        "database": database_status(),
     }
