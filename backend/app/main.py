@@ -37,5 +37,5 @@ def health() -> dict[str, object]:
         "ai_framework": "langgraph",
         "automation_enabled": bool(settings.automation_secret),
         "automation_mode": "PAPER",
-        "persistence_enabled": False,
+        "persistence_enabled": True,
     }
