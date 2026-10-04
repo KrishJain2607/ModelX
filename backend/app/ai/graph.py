@@ -101,8 +101,9 @@ def _invoke_once(provider: str, model_name: str, system: str, payload: dict[str,
         response = model.invoke(messages + [
             (
                 "system",
-                "Return ONLY one valid JSON object matching the requested output "
-                "schema. Do not use markdown fences, commentary, or extra text. "
+                "Return ONLY one valid JSON object matching this JSON Schema: "
+                f"{json.dumps(schema.model_json_schema(), ensure_ascii=False)} "
+                "Do not use markdown fences, commentary, or extra text. "
                 "The response must be valid JSON.",
             ),
         ])
