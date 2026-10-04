@@ -14,6 +14,7 @@ from app.approvals import create_approval, get, mark_executed, mark_execution_fa
 from app.broker import KiteExecutionClient
 from app.config.settings import settings
 from app.api.analysis import _risk_plan
+from app.database import save_paper_trade
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,7 @@ def _execute(record: dict) -> dict:
             "source": "EMAIL_APPROVAL",
         }
         _paper_trades[trade_id] = paper_trade
+        save_paper_trade(paper_trade)
         logger.info("[PAPER] Approved trade opened: id=%s symbol=%s qty=%s entry=%.2f sl=%.2f target=%.2f", trade_id, trade["symbol"], quantity, entry, stop, target)
         return {
             "mode": "PAPER",
