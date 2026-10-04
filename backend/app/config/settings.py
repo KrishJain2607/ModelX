@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     ai_fallback_provider: str = ""
     ai_api_key: str = ""
     gemini_api_key: str = ""
+    bluesminds_api_key: str = ""
+    bluesminds_base_url: str = "https://api.bluesminds.com/v1"
     ai_model: str = "gemini-3.8-flash"
     ai_technical_model: str = "gemini-3.8-flash"
     ai_trend_model: str = "gemini-3.8-flash"
